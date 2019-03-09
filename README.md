@@ -1,2 +1,2 @@
-# flockdb
+# flock
 Twitter on Dgraph
