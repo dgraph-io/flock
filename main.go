@@ -152,7 +152,7 @@ func readCredentials(path string) TwitterCreds {
 
 func readKeyWords(path string) []string {
 	txt, err := ioutil.ReadFile(path)
-	CheckFatal(err, "Unable to read keywords file '%'", path)
+	CheckFatal(err, "Unable to read keywords file '%s'", path)
 	return strings.Split(string(txt), "\n")
 }
 
