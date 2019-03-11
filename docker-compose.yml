@@ -17,7 +17,7 @@ services:
       target: /gobin
       read_only: true
     - type: bind
-      source: /var/data/twitterer
+      source: /var/data/flockdb
       target: /data
       read_only: false
     user: ${UID:-1000}
@@ -40,7 +40,7 @@ services:
       target: /gobin
       read_only: true
     - type: bind
-      source: /var/data/twitterer
+      source: /var/data/flockdb
       target: /data
       read_only: false
     user: ${UID:-1000}
@@ -63,7 +63,7 @@ services:
       target: /gobin
       read_only: true
     - type: bind
-      source: /var/data/twitterer
+      source: /var/data/flockdb
       target: /data
       read_only: false
     user: ${UID:-1000}
@@ -84,7 +84,7 @@ services:
       target: /gobin
       read_only: true
     - type: bind
-      source: /var/data/twitterer
+      source: /var/data/flockdb
       target: /data
       read_only: false
     user: ${UID:-1000}
@@ -107,7 +107,7 @@ services:
       target: /gobin
       read_only: true
     - type: bind
-      source: /var/data/twitterer
+      source: /var/data/flockdb
       target: /data
       read_only: false
     user: ${UID:-1000}
@@ -130,7 +130,7 @@ services:
       target: /gobin
       read_only: true
     - type: bind
-      source: /var/data/twitterer
+      source: /var/data/flockdb
       target: /data
       read_only: false
     user: ${UID:-1000}
