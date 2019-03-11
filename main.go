@@ -19,10 +19,12 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -35,6 +37,16 @@ import (
 	"github.com/dgraph-io/dgo/protos/api"
 
 	"google.golang.org/grpc"
+)
+
+const (
+	cTimeFormat       = "Mon Jan 02 15:04:05 -0700 2006"
+	cDgraphTimeFormat = "2006-01-02T15:04:05.999999999+10:00"
+)
+
+var (
+	errNotATweet      = errors.New("message in the stream is not a tweet")
+	errShouldNotReach = errors.New("invariant failed to satisfy")
 )
 
 type TwitterCreds struct {
@@ -57,6 +69,33 @@ type Stats struct {
 	NumCommits      uint32
 	NumErrorsJson   uint32
 	NumErrorsDgraph uint32
+}
+
+type twitterUser struct {
+	UID              string `json:"uid"`
+	UserID           string `json:"user_id,omitempty"`
+	UserName         string `json:"user_name,omitempty"`
+	ScreenName       string `json:"screen_name,omitempty"`
+	Description      string `json:"description,omitempty"`
+	FriendsCount     int    `json:"friends_count,omitempty"`
+	Verified         bool   `json:"verified,omitempty"`
+	ProfileBannerURL string `json:"profile_banner_url,omitempty"`
+	ProfileImageURL  string `json:"profile_image_url,omitempty"`
+	Tweet            []struct {
+		UID string `json:"uid"`
+	} `json:"tweet"`
+}
+
+type twitterTweet struct {
+	UID       string        `json:"uid"`
+	IDStr     string        `json:"id_str"`
+	CreatedAt string        `json:"created_at"`
+	Message   string        `json:"message,omitempty"`
+	URLs      []string      `json:"urls,omitempty"`
+	HashTags  []string      `json:"hashtags,omitempty"`
+	Author    twitterUser   `json:"author"`
+	Mention   []twitterUser `json:"mention,omitempty"`
+	Retweet   bool          `json:"retweet"`
 }
 
 var (
@@ -109,16 +148,37 @@ func runInserter(alphas []api.DgraphClient, wg *sync.WaitGroup, tweets <-chan in
 	defer wg.Done()
 
 	dgr := dgo.NewDgraphClient(alphas...)
+
+	// create index on id strings
+	op := &api.Operation{
+		Schema: `user_id: string @index(exact) .
+id_str: string @index(exact) .`,
+	}
+	err := dgr.Alter(context.Background(), op)
+	CheckFatal(err, "error in creating indexes")
+
 	for jsn := range tweets {
 		atomic.AddUint32(&stats.NumTweets, 1)
 
-		tweet, err := json.Marshal(jsn)
+		ft, err := filterTweet(jsn)
 		if err != nil {
 			atomic.AddUint32(&stats.NumErrorsJson, 1)
 			continue
 		}
 
+		// Now, we need query UIDs and ensure they don't already exists
 		txn := dgr.NewTxn()
+		if err := updateFilteredTweet(ft, txn); err != nil {
+			atomic.AddUint32(&stats.NumErrorsDgraph, 1)
+			continue
+		}
+
+		tweet, err := json.Marshal(ft)
+		if err != nil {
+			atomic.AddUint32(&stats.NumErrorsJson, 1)
+			continue
+		}
+
 		_, err = txn.Mutate(context.Background(), &api.Mutation{SetJson: tweet, CommitNow: true})
 		switch {
 		case err == nil:
@@ -132,6 +192,196 @@ func runInserter(alphas []api.DgraphClient, wg *sync.WaitGroup, tweets <-chan in
 			time.Sleep(100 * time.Millisecond)
 		}
 	}
+}
+
+func filterTweet(jsn interface{}) (*twitterTweet, error) {
+	var tweet *twitter.Tweet
+	switch msg := jsn.(type) {
+	case *twitter.Tweet:
+		tweet = msg
+	default:
+		return nil, errNotATweet
+	}
+
+	createdAt, err := time.Parse(cTimeFormat, tweet.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+
+	var tweetText string
+	if tweet.Truncated {
+		tweetText = tweet.ExtendedTweet.FullText
+	} else {
+		tweetText = tweet.FullText
+	}
+
+	var urlEntities []twitter.URLEntity
+	if tweet.Truncated {
+		urlEntities = tweet.ExtendedTweet.Entities.Urls
+	} else {
+		urlEntities = tweet.Entities.Urls
+	}
+	expandedURLs := make([]string, len(urlEntities))
+	for _, url := range urlEntities {
+		expandedURLs = append(expandedURLs, url.ExpandedURL)
+	}
+
+	var hashTags []twitter.HashtagEntity
+	if tweet.Truncated {
+		hashTags = tweet.ExtendedTweet.Entities.Hashtags
+	} else {
+		hashTags = tweet.Entities.Hashtags
+	}
+	hashTagTexts := make([]string, len(hashTags))
+	for _, tag := range hashTags {
+		hashTagTexts = append(hashTagTexts, tag.Text)
+	}
+
+	var userMentions []twitterUser
+	for _, userMention := range tweet.Entities.UserMentions {
+		userMentions = append(userMentions, twitterUser{
+			UID:        fmt.Sprintf("_:%v", userMention.IDStr),
+			UserID:     userMention.IDStr,
+			UserName:   userMention.Name,
+			ScreenName: userMention.ScreenName,
+		})
+	}
+
+	return &twitterTweet{
+		UID:       fmt.Sprintf("_:%v", tweet.IDStr),
+		IDStr:     tweet.IDStr,
+		CreatedAt: createdAt.Format(cDgraphTimeFormat),
+		Message:   unquote(strconv.Quote(tweetText)),
+		URLs:      expandedURLs,
+		HashTags:  hashTagTexts,
+		Author: twitterUser{
+			UID:              fmt.Sprintf("_:%v", tweet.User.IDStr),
+			UserID:           tweet.User.IDStr,
+			UserName:         unquote(strconv.Quote(tweet.User.Name)),
+			ScreenName:       tweet.User.ScreenName,
+			Description:      unquote(strconv.Quote(tweet.User.Description)),
+			FriendsCount:     tweet.User.FriendsCount,
+			Verified:         tweet.User.Verified,
+			ProfileBannerURL: tweet.User.ProfileBannerURL,
+			ProfileImageURL:  tweet.User.ProfileImageURL,
+			Tweet: []struct {
+				UID string `json:"uid"`
+			}{
+				{
+					UID: fmt.Sprintf("_:%v", tweet.User.IDStr),
+				},
+			},
+		},
+		Mention: userMentions,
+		Retweet: tweet.Retweeted,
+	}, nil
+}
+
+func updateFilteredTweet(ft *twitterTweet, txn *dgo.Txn) error {
+	// first ensure that tweet doesn't exists
+	qTweet := `query all($tweetID: string) {
+	    all(func: eq(id_str, $tweetID)) {
+	      uid
+	    }
+	  }`
+	resp, err := txn.QueryWithVars(context.Background(), qTweet, map[string]string{"$tweetID": ft.IDStr})
+	if err != nil {
+		return err
+	}
+	var respJSON struct {
+		All []struct {
+			UID string `json:"uid"`
+		} `json:"all"`
+	}
+	if err := json.Unmarshal(resp.Json, &respJSON); err != nil {
+		return err
+	}
+
+	// possible duplicate, shouldn't happen
+	if len(respJSON.All) > 0 {
+		return errShouldNotReach
+	}
+
+	if u, err := queryUser(txn, ft.Author.UserID); err != nil {
+		return err
+	} else if u != nil {
+		u.Tweet = ft.Author.Tweet
+		ft.Author = *u
+	}
+
+	for i, m := range ft.Mention {
+		if u, err := queryUser(txn, m.UserID); err != nil {
+			return err
+		} else if u != nil {
+			ft.Mention[i] = *u
+		}
+	}
+
+	return nil
+}
+
+func queryUser(txn *dgo.Txn, userID string) (*twitterUser, error) {
+	// query author of the tweet
+	q := `query all($userID: string) {
+		    all(func: eq(user_id, $userID)) {
+		      uid
+		      user_id
+		      user_name
+		      screen_name
+		      description
+		      friends_count
+		      verified
+		      profile_banner_url
+		      profile_image_url
+		    }
+		  }`
+	resp, err := txn.QueryWithVars(context.Background(), q, map[string]string{"$userID": userID})
+	if err != nil {
+		return nil, err
+	}
+	var respJSON struct {
+		All []twitterUser `json:"all"`
+	}
+	if err := json.Unmarshal(resp.Json, &respJSON); err != nil {
+		return nil, err
+	}
+
+	if len(respJSON.All) > 1 {
+		return nil, errShouldNotReach
+	}
+
+	if len(respJSON.All) == 1 {
+		u := &twitterUser{}
+		u.UID = fmt.Sprintf("%s", respJSON.All[0].UID)
+		if u.UserID != respJSON.All[0].UserID {
+			u.UserID = respJSON.All[0].UserID
+		}
+		if u.UserName != respJSON.All[0].UserName {
+			u.UserName = respJSON.All[0].UserName
+		}
+		if u.ScreenName != respJSON.All[0].ScreenName {
+			u.ScreenName = respJSON.All[0].ScreenName
+		}
+		if u.Description != respJSON.All[0].Description {
+			u.Description = respJSON.All[0].Description
+		}
+		if u.FriendsCount != respJSON.All[0].FriendsCount {
+			u.FriendsCount = respJSON.All[0].FriendsCount
+		}
+		if u.Verified != respJSON.All[0].Verified {
+			u.Verified = respJSON.All[0].Verified
+		}
+		if u.ProfileBannerURL != respJSON.All[0].ProfileBannerURL {
+			u.ProfileBannerURL = respJSON.All[0].ProfileBannerURL
+		}
+		if u.ProfileImageURL != respJSON.All[0].ProfileImageURL {
+			u.ProfileImageURL = respJSON.All[0].ProfileImageURL
+		}
+
+		return u, nil
+	}
+
+	return nil, nil
 }
 
 func readCredentials(path string) TwitterCreds {
@@ -155,7 +405,17 @@ func newTwitterClient(creds TwitterCreds) *twitter.Client {
 	token := oauth1.NewToken(creds.AccessToken, creds.AccessSecret)
 	config := oauth1.NewConfig(creds.ConsumerKey, creds.ConsumerSecret)
 	httpClient := config.Client(oauth1.NoContext, token)
-	return twitter.NewClient(httpClient)
+	twitterClient := twitter.NewClient(httpClient)
+
+	// verify credentials before returning them
+	verifyParams := &twitter.AccountVerifyParams{
+		SkipStatus:   twitter.Bool(true),
+		IncludeEmail: twitter.Bool(true),
+	}
+	_, _, err := twitterClient.Accounts.VerifyCredentials(verifyParams)
+	CheckFatal(err, "invalid credentials")
+
+	return twitterClient
 }
 
 func reportStats() {
@@ -177,4 +437,8 @@ func newApiClients(sockAddr []string) []api.DgraphClient {
 	}
 
 	return clients
+}
+
+func unquote(s string) string {
+	return s[1 : len(s)-1]
 }
