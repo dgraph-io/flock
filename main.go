@@ -49,7 +49,7 @@ type Options struct {
 	CredentialsFile  string
 	KeywordsFile     string
 	ReportPeriodSecs int
-	AlphaSockAddr    string
+	AlphaSockAddr    []string
 }
 
 type Stats struct {
@@ -67,16 +67,17 @@ var (
 func main() {
 	// TODO: Allow setting these from cmdline.
 	opts = Options{
-		NumDgrClients:    2,
+		NumDgrClients:    6,
 		CredentialsFile:  "credentials.json",
 		KeywordsFile:     "keywords.txt",
 		ReportPeriodSecs: 2,
-		AlphaSockAddr:    "localhost:9180",
+		AlphaSockAddr:    []string{":9180", ":9182", ":9183"},
 	}
 
 	creds := readCredentials(opts.CredentialsFile)
 	kwds := readKeyWords(opts.KeywordsFile)
 	client := newTwitterClient(creds)
+	alphas := newApiClients(opts.AlphaSockAddr)
 
 	params := &twitter.StreamFilterParams{
 		Track:         kwds,
@@ -85,11 +86,12 @@ func main() {
 	stream, err := client.Streams.Filter(params)
 	CheckFatal(err, "Unable to get twitter stream")
 
-	log.Printf("Using %v dgraph clients\n", opts.NumDgrClients)
+	log.Printf("Using %v dgraph clients on %v alphas\n",
+		opts.NumDgrClients, len(opts.AlphaSockAddr))
 	var wg sync.WaitGroup
 	for i := 0; i < opts.NumDgrClients; i++ {
 		wg.Add(1)
-		go runInserter(i, &wg, stream.Messages)
+		go runInserter(alphas, &wg, stream.Messages)
 	}
 	go reportStats()
 	wg.Wait()
@@ -103,17 +105,10 @@ func CheckFatal(err error, format string, args ...interface{}) {
 	}
 }
 
-func runInserter(idx int, wg *sync.WaitGroup, tweets <-chan interface{}) {
+func runInserter(alphas []api.DgraphClient, wg *sync.WaitGroup, tweets <-chan interface{}) {
 	defer wg.Done()
 
-	sockAddr := opts.AlphaSockAddr
-	conn, err := grpc.Dial(sockAddr, grpc.WithInsecure())
-
-	CheckFatal(err, "Unable to connect to dgraph")
-	defer func() { _ = conn.Close() }()
-
-	dgr := dgo.NewDgraphClient(api.NewDgraphClient(conn))
-
+	dgr := dgo.NewDgraphClient(alphas...)
 	for jsn := range tweets {
 		atomic.AddUint32(&stats.NumTweets, 1)
 
@@ -129,7 +124,7 @@ func runInserter(idx int, wg *sync.WaitGroup, tweets <-chan interface{}) {
 		case err == nil:
 			atomic.AddUint32(&stats.NumCommits, 1)
 		case strings.Contains(err.Error(), "connection refused"):
-			log.Printf("ERROR Connection refused by %s... waiting a bit\n", sockAddr)
+			log.Printf("ERROR Connection refused... waiting a bit\n")
 			time.Sleep(5 * time.Second)
 		default:
 			atomic.AddUint32(&stats.NumErrorsDgraph, 1)
@@ -170,4 +165,16 @@ func reportStats() {
 		log.Printf("STATS tweets: %d, commits: %d, json_errs: %d, dgraph_errs: %d\n",
 			stats.NumTweets, stats.NumCommits, stats.NumErrorsJson, stats.NumErrorsDgraph)
 	}
+}
+
+func newApiClients(sockAddr []string) []api.DgraphClient {
+	var clients []api.DgraphClient
+
+	for _, sa := range sockAddr {
+		conn, err := grpc.Dial(sa, grpc.WithInsecure())
+		CheckFatal(err, "Unable to connect to dgraph")
+		clients = append(clients, api.NewDgraphClient(conn))
+	}
+
+	return clients
 }
