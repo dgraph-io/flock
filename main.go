@@ -65,10 +65,12 @@ type Options struct {
 }
 
 type Stats struct {
-	NumTweets       uint32
-	NumCommits      uint32
-	NumErrorsJson   uint32
-	NumErrorsDgraph uint32
+	Tweets       uint32
+	Commits      uint32
+	Retries      uint32
+	Failures     uint32
+	ErrorsJson   uint32
+	ErrorsDgraph uint32
 }
 
 type twitterUser struct {
@@ -158,38 +160,48 @@ id_str: string @index(exact) .`,
 	CheckFatal(err, "error in creating indexes")
 
 	for jsn := range tweets {
-		atomic.AddUint32(&stats.NumTweets, 1)
+		atomic.AddUint32(&stats.Tweets, 1)
 
 		ft, err := filterTweet(jsn)
 		if err != nil {
-			atomic.AddUint32(&stats.NumErrorsJson, 1)
+			atomic.AddUint32(&stats.ErrorsJson, 1)
 			continue
 		}
 
 		// Now, we need query UIDs and ensure they don't already exists
 		txn := dgr.NewTxn()
 		if err := updateFilteredTweet(ft, txn); err != nil {
-			atomic.AddUint32(&stats.NumErrorsDgraph, 1)
+			atomic.AddUint32(&stats.ErrorsDgraph, 1)
 			continue
 		}
 
 		tweet, err := json.Marshal(ft)
 		if err != nil {
-			atomic.AddUint32(&stats.NumErrorsJson, 1)
+			atomic.AddUint32(&stats.ErrorsJson, 1)
 			continue
 		}
 
+		// only ONE retry attempt is made
+		retry := true
+	RETRY:
 		_, err = txn.Mutate(context.Background(), &api.Mutation{SetJson: tweet, CommitNow: true})
 		switch {
 		case err == nil:
-			atomic.AddUint32(&stats.NumCommits, 1)
+			atomic.AddUint32(&stats.Commits, 1)
 		case strings.Contains(err.Error(), "connection refused"):
+			// wait for alpha to (re)start
 			log.Printf("ERROR Connection refused... waiting a bit\n")
 			time.Sleep(5 * time.Second)
-		default:
-			atomic.AddUint32(&stats.NumErrorsDgraph, 1)
-			log.Printf("ERROR Unable to commit: %v\n", err)
+		case strings.Contains(err.Error(), "already been committed or discarded"):
+			atomic.AddUint32(&stats.Failures, 1)
+		case retry && strings.Contains(err.Error(), "Please retry"):
+			atomic.AddUint32(&stats.Retries, 1)
 			time.Sleep(100 * time.Millisecond)
+			retry = false
+			goto RETRY
+		default:
+			atomic.AddUint32(&stats.ErrorsDgraph, 1)
+			log.Printf("ERROR Unable to commit: %v\n", err)
 		}
 	}
 }
@@ -419,11 +431,18 @@ func newTwitterClient(creds TwitterCreds) *twitter.Client {
 }
 
 func reportStats() {
+	var oldStats, newStats Stats
 	log.Printf("Reporting stats every %v seconds\n", opts.ReportPeriodSecs)
 	for {
+		newStats = stats
 		time.Sleep(time.Second * time.Duration(opts.ReportPeriodSecs))
-		log.Printf("STATS tweets: %d, commits: %d, json_errs: %d, dgraph_errs: %d\n",
-			stats.NumTweets, stats.NumCommits, stats.NumErrorsJson, stats.NumErrorsDgraph)
+		log.Printf("STATS tweets: %d, commits: %d, json_errs: %d, "+
+			"retries: %d, failures: %d, dgraph_errs: %d, "+
+			"commit_rate: %d / sec\n",
+			newStats.Tweets, newStats.Commits, newStats.ErrorsJson,
+			newStats.Retries, newStats.Failures, newStats.ErrorsDgraph,
+			(newStats.Tweets-oldStats.Tweets)/uint32(opts.ReportPeriodSecs))
+		oldStats = newStats
 	}
 }
 
