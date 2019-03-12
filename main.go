@@ -81,9 +81,21 @@ type twitterUser struct {
 	Verified         bool   `json:"verified,omitempty"`
 	ProfileBannerURL string `json:"profile_banner_url,omitempty"`
 	ProfileImageURL  string `json:"profile_image_url,omitempty"`
-	Tweet            []struct {
+	// TODO: Tweet should have an author. Not the other way around.
+	Tweet []struct {
 		UID string `json:"uid"`
 	} `json:"tweet"`
+}
+
+func (src *twitterUser) equals(dst *twitterUser) bool {
+	return src.UserID == dst.UserID &&
+		src.UserName == dst.UserName &&
+		src.ScreenName == dst.ScreenName &&
+		src.Description == dst.Description &&
+		src.FriendsCount == dst.FriendsCount &&
+		src.Verified == dst.Verified &&
+		src.ProfileBannerURL == dst.ProfileBannerURL &&
+		src.ProfileImageURL == dst.ProfileImageURL
 }
 
 type twitterTweet struct {
@@ -152,7 +164,7 @@ func runInserter(alphas []api.DgraphClient, wg *sync.WaitGroup, tweets <-chan in
 	// create index on id strings
 	op := &api.Operation{
 		Schema: `user_id: string @index(exact) .
-id_str: string @index(exact) .`,
+                 id_str: string @index(exact) .`,
 	}
 	err := dgr.Alter(context.Background(), op)
 	CheckFatal(err, "error in creating indexes")
@@ -277,34 +289,14 @@ func filterTweet(jsn interface{}) (*twitterTweet, error) {
 	}, nil
 }
 
+// TODO: We don't need to check for duplication of Tweet itself. They are guaranteed to be unique.
+// But, we do need to check if the author is the same or not. If same, we don't rewrite it.
+// I don't quite follow the logic here.
 func updateFilteredTweet(ft *twitterTweet, txn *dgo.Txn) error {
-	// first ensure that tweet doesn't exists
-	qTweet := `query all($tweetID: string) {
-	    all(func: eq(id_str, $tweetID)) {
-	      uid
-	    }
-	  }`
-	resp, err := txn.QueryWithVars(context.Background(), qTweet, map[string]string{"$tweetID": ft.IDStr})
-	if err != nil {
-		return err
-	}
-	var respJSON struct {
-		All []struct {
-			UID string `json:"uid"`
-		} `json:"all"`
-	}
-	if err := json.Unmarshal(resp.Json, &respJSON); err != nil {
-		return err
-	}
-
-	// possible duplicate, shouldn't happen
-	if len(respJSON.All) > 0 {
-		return errShouldNotReach
-	}
-
 	if u, err := queryUser(txn, ft.Author.UserID); err != nil {
 		return err
 	} else if u != nil {
+		// If we have the user already, this won't be nil.
 		u.Tweet = ft.Author.Tweet
 		ft.Author = *u
 	}
@@ -313,6 +305,7 @@ func updateFilteredTweet(ft *twitterTweet, txn *dgo.Txn) error {
 		if u, err := queryUser(txn, m.UserID); err != nil {
 			return err
 		} else if u != nil {
+			// If we have the user already, this won't be nil.
 			ft.Mention[i] = *u
 		}
 	}
@@ -339,48 +332,19 @@ func queryUser(txn *dgo.Txn, userID string) (*twitterUser, error) {
 	if err != nil {
 		return nil, err
 	}
-	var respJSON struct {
+	var r struct {
 		All []twitterUser `json:"all"`
 	}
-	if err := json.Unmarshal(resp.Json, &respJSON); err != nil {
+	if err := json.Unmarshal(resp.Json, &r); err != nil {
 		return nil, err
 	}
 
-	if len(respJSON.All) > 1 {
+	if len(r.All) > 1 {
 		return nil, errShouldNotReach
 	}
-
-	if len(respJSON.All) == 1 {
-		u := &twitterUser{}
-		u.UID = fmt.Sprintf("%s", respJSON.All[0].UID)
-		if u.UserID != respJSON.All[0].UserID {
-			u.UserID = respJSON.All[0].UserID
-		}
-		if u.UserName != respJSON.All[0].UserName {
-			u.UserName = respJSON.All[0].UserName
-		}
-		if u.ScreenName != respJSON.All[0].ScreenName {
-			u.ScreenName = respJSON.All[0].ScreenName
-		}
-		if u.Description != respJSON.All[0].Description {
-			u.Description = respJSON.All[0].Description
-		}
-		if u.FriendsCount != respJSON.All[0].FriendsCount {
-			u.FriendsCount = respJSON.All[0].FriendsCount
-		}
-		if u.Verified != respJSON.All[0].Verified {
-			u.Verified = respJSON.All[0].Verified
-		}
-		if u.ProfileBannerURL != respJSON.All[0].ProfileBannerURL {
-			u.ProfileBannerURL = respJSON.All[0].ProfileBannerURL
-		}
-		if u.ProfileImageURL != respJSON.All[0].ProfileImageURL {
-			u.ProfileImageURL = respJSON.All[0].ProfileImageURL
-		}
-
-		return u, nil
+	if len(r.All) == 1 {
+		return &r.All[0], nil
 	}
-
 	return nil, nil
 }
 
