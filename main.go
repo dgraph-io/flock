@@ -93,6 +93,7 @@ type progOptions struct {
 	NumDgrClients    int
 	CredentialsFile  string
 	KeywordsFile     string
+	KWUpdateDuration int64
 	ReportPeriodSecs int
 	AlphaSockAddr    []string
 }
@@ -136,6 +137,7 @@ func main() {
 		NumDgrClients:    6,
 		CredentialsFile:  "credentials.json",
 		KeywordsFile:     "keywords.txt",
+		KWUpdateDuration: 2 * 60 * 60,
 		ReportPeriodSecs: 2,
 		AlphaSockAddr:    []string{":9180", ":9182", ":9183"},
 	}
@@ -145,8 +147,6 @@ func main() {
 	client := newTwitterClient(creds)
 	alphas := newAPIClients(opts.AlphaSockAddr)
 
-	stream := client.PublicStreamFilter(map[string][]string{"track": kwds})
-
 	// setup schema
 	dgr := dgo.NewDgraphClient(alphas...)
 	op := &api.Operation{
@@ -155,16 +155,35 @@ func main() {
 	err := dgr.Alter(context.Background(), op)
 	checkFatal(err, "error in creating indexes")
 
-	// read twitter stream
+	// report stats
+	go reportStats()
 	log.Printf("Using %v dgraph clients on %v alphas\n",
 		opts.NumDgrClients, len(opts.AlphaSockAddr))
-	var wg sync.WaitGroup
-	for i := 0; i < opts.NumDgrClients; i++ {
-		wg.Add(1)
-		go runInserter(alphas, &wg, stream.C)
+
+	// read twitter stream
+	for {
+		// choose top 20 trending keywords
+		trends, err := getTrends(1, client)
+		if len(trends) > 20 {
+			trends = trends[:20]
+		}
+		checkFatal(err, "error in getting trends")
+
+		allKwds := append(kwds, trends...)
+		stream := client.PublicStreamFilter(map[string][]string{"track": allKwds})
+		log.Printf("updating keywords to: %v", allKwds)
+
+		var wg sync.WaitGroup
+		for i := 0; i < opts.NumDgrClients; i++ {
+			wg.Add(1)
+			go runInserter(alphas, &wg, stream.C)
+		}
+
+		time.Sleep(time.Second * time.Duration(opts.KWUpdateDuration))
+		stream.Stop()
+
+		wg.Wait()
 	}
-	go reportStats()
-	wg.Wait()
 }
 
 func runInserter(alphas []api.DgraphClient, wg *sync.WaitGroup, tweets <-chan interface{}) {
@@ -363,6 +382,20 @@ func queryUser(txn *dgo.Txn, src *twitterUser) (*twitterUser, error) {
 	} else {
 		return &twitterUser{UID: r.All[0].UID}, nil
 	}
+}
+
+func getTrends(id int64, api *anaconda.TwitterApi) ([]string, error) {
+	resp, err := api.GetTrendsByPlace(id, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	trends := make([]string, len(resp.Trends))
+	for i, t := range resp.Trends {
+		trends[i] = t.Name
+	}
+
+	return trends, nil
 }
 
 func readCredentials(path string) twitterCreds {
