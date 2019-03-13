@@ -256,9 +256,11 @@ func filterTweet(jsn interface{}) (*twitterTweet, error) {
 		expandedURLs = append(expandedURLs, url.Expanded_url)
 	}
 
-	hashTagTexts := make([]string, len(tweet.Entities.Hashtags))
+	hashTagTexts := make([]string, 0)
 	for _, tag := range tweet.Entities.Hashtags {
-		hashTagTexts = append(hashTagTexts, tag.Text)
+		if tag.Text != "" {
+			hashTagTexts = append(hashTagTexts, tag.Text)
+		}
 	}
 
 	var userMentions []twitterUser
@@ -390,7 +392,7 @@ func getTrends(id int64, api *anaconda.TwitterApi) ([]string, error) {
 		return nil, err
 	}
 
-	trends := make([]string, len(resp.Trends))
+	trends := make([]string, 0)
 	for i, t := range resp.Trends {
 		trends[i] = t.Name
 	}
