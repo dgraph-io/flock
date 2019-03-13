@@ -188,7 +188,7 @@ func runInserter(alphas []api.DgraphClient, wg *sync.WaitGroup, tweets <-chan in
 
 		// Now, we need query UIDs and ensure they don't already exists
 		txn := dgr.NewTxn()
-		if err := updateFilteredTweet(ft, txn); err != nil {
+		if errTweet := updateFilteredTweet(ft, txn); errTweet != nil {
 			atomic.AddUint32(&stats.ErrorsDgraph, 1)
 			continue
 		}
@@ -319,19 +319,36 @@ func updateFilteredTweet(ft *twitterTweet, txn *dgo.Txn) error {
 		return errShouldNotReach
 	}
 
+	// map to check for duplicates
+	users := make(map[string]string)
+
+	userID := ft.Author.UserID
 	if u, err := queryUser(txn, &ft.Author); err != nil {
 		return err
 	} else if u != nil {
 		ft.Author = *u
 	}
+	users[userID] = ft.Author.UID
 
+	userMentions := make([]twitterUser, 0)
 	for i, m := range ft.Mention {
+		if dup, ok := users[m.UserID]; ok && dup != "" {
+			userMentions = append(userMentions, twitterUser{UID: dup})
+			continue
+		} else if ok && dup == "" {
+			// TODO: find a way to not ignore this mention
+			continue
+		}
+
+		userID := m.UserID
 		if u, err := queryUser(txn, &m); err != nil {
 			return err
 		} else if u != nil {
 			ft.Mention[i] = *u
 		}
+		users[userID] = m.UID
 	}
+	ft.Mention = userMentions
 
 	return nil
 }
