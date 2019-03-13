@@ -29,8 +29,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/dghubble/go-twitter/twitter"
-	"github.com/dghubble/oauth1"
+	"github.com/ChimeraCoder/anaconda"
 	"github.com/dgraph-io/dgo"
 	"github.com/dgraph-io/dgo/protos/api"
 	"google.golang.org/grpc"
@@ -146,19 +145,14 @@ func main() {
 	client := newTwitterClient(creds)
 	alphas := newAPIClients(opts.AlphaSockAddr)
 
-	params := &twitter.StreamFilterParams{
-		Track:         kwds,
-		StallWarnings: twitter.Bool(true),
-	}
-	stream, err := client.Streams.Filter(params)
-	checkFatal(err, "Unable to get twitter stream")
+	stream := client.PublicStreamFilter(map[string][]string{"track": kwds})
 
 	// setup schema
 	dgr := dgo.NewDgraphClient(alphas...)
 	op := &api.Operation{
 		Schema: cDgraphSchema,
 	}
-	err = dgr.Alter(context.Background(), op)
+	err := dgr.Alter(context.Background(), op)
 	checkFatal(err, "error in creating indexes")
 
 	// read twitter stream
@@ -167,7 +161,7 @@ func main() {
 	var wg sync.WaitGroup
 	for i := 0; i < opts.NumDgrClients; i++ {
 		wg.Add(1)
-		go runInserter(alphas, &wg, stream.Messages)
+		go runInserter(alphas, &wg, stream.C)
 	}
 	go reportStats()
 	wg.Wait()
@@ -225,9 +219,9 @@ func runInserter(alphas []api.DgraphClient, wg *sync.WaitGroup, tweets <-chan in
 }
 
 func filterTweet(jsn interface{}) (*twitterTweet, error) {
-	var tweet *twitter.Tweet
+	var tweet anaconda.Tweet
 	switch msg := jsn.(type) {
-	case *twitter.Tweet:
+	case anaconda.Tweet:
 		tweet = msg
 	default:
 		return nil, errNotATweet
@@ -238,52 +232,33 @@ func filterTweet(jsn interface{}) (*twitterTweet, error) {
 		return nil, err
 	}
 
-	var tweetText string
-	if tweet.Truncated {
-		tweetText = tweet.ExtendedTweet.FullText
-	} else {
-		tweetText = tweet.FullText
+	expandedURLs := make([]string, len(tweet.Entities.Urls))
+	for _, url := range tweet.Entities.Urls {
+		expandedURLs = append(expandedURLs, url.Expanded_url)
 	}
 
-	var urlEntities []twitter.URLEntity
-	if tweet.Truncated {
-		urlEntities = tweet.ExtendedTweet.Entities.Urls
-	} else {
-		urlEntities = tweet.Entities.Urls
-	}
-	expandedURLs := make([]string, len(urlEntities))
-	for _, url := range urlEntities {
-		expandedURLs = append(expandedURLs, url.ExpandedURL)
-	}
-
-	var hashTags []twitter.HashtagEntity
-	if tweet.Truncated {
-		hashTags = tweet.ExtendedTweet.Entities.Hashtags
-	} else {
-		hashTags = tweet.Entities.Hashtags
-	}
-	hashTagTexts := make([]string, len(hashTags))
-	for _, tag := range hashTags {
+	hashTagTexts := make([]string, len(tweet.Entities.Hashtags))
+	for _, tag := range tweet.Entities.Hashtags {
 		hashTagTexts = append(hashTagTexts, tag.Text)
 	}
 
 	var userMentions []twitterUser
-	for _, userMention := range tweet.Entities.UserMentions {
+	for _, userMention := range tweet.Entities.User_mentions {
 		userMentions = append(userMentions, twitterUser{
-			UserID:     userMention.IDStr,
+			UserID:     userMention.Id_str,
 			UserName:   userMention.Name,
-			ScreenName: userMention.ScreenName,
+			ScreenName: userMention.Screen_name,
 		})
 	}
 
 	return &twitterTweet{
-		IDStr:     tweet.IDStr,
+		IDStr:     tweet.IdStr,
 		CreatedAt: createdAt.Format(cDgraphTimeFormat),
-		Message:   tweetText,
+		Message:   tweet.FullText,
 		URLs:      expandedURLs,
 		HashTags:  hashTagTexts,
 		Author: twitterUser{
-			UserID:           tweet.User.IDStr,
+			UserID:           tweet.User.IdStr,
 			UserName:         tweet.User.Name,
 			ScreenName:       tweet.User.ScreenName,
 			Description:      tweet.User.Description,
@@ -407,21 +382,19 @@ func readKeyWords(path string) []string {
 	return strings.Split(string(txt), "\n")
 }
 
-func newTwitterClient(creds twitterCreds) *twitter.Client {
-	token := oauth1.NewToken(creds.AccessToken, creds.AccessSecret)
-	config := oauth1.NewConfig(creds.ConsumerKey, creds.ConsumerSecret)
-	httpClient := config.Client(oauth1.NoContext, token)
-	twitterClient := twitter.NewClient(httpClient)
+func newTwitterClient(creds twitterCreds) *anaconda.TwitterApi {
+	client := anaconda.NewTwitterApiWithCredentials(
+		creds.AccessToken, creds.AccessSecret,
+		creds.ConsumerKey, creds.ConsumerSecret,
+	)
 
-	// verify credentials before returning them
-	verifyParams := &twitter.AccountVerifyParams{
-		SkipStatus:   twitter.Bool(true),
-		IncludeEmail: twitter.Bool(true),
+	ok, err := client.VerifyCredentials()
+	checkFatal(err, "error in verifying credentials")
+	if !ok {
+		checkFatal(errors.New("invalid credentials"), "twitter")
 	}
-	_, _, err := twitterClient.Accounts.VerifyCredentials(verifyParams)
-	checkFatal(err, "invalid credentials")
 
-	return twitterClient
+	return client
 }
 
 func newAPIClients(sockAddr []string) []api.DgraphClient {
