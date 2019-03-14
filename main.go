@@ -392,7 +392,7 @@ func getTrends(id int64, api *anaconda.TwitterApi) ([]string, error) {
 		return nil, err
 	}
 
-	trends := make([]string, 0)
+	trends := make([]string, len(resp.Trends))
 	for i, t := range resp.Trends {
 		trends[i] = t.Name
 	}
