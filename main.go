@@ -170,7 +170,8 @@ func main() {
 		checkFatal(err, "error in getting trends")
 
 		allKwds := append(kwds, trends...)
-		stream := client.PublicStreamFilter(map[string][]string{"track": allKwds})
+		// stream := client.PublicStreamFilter(map[string][]string{"track": allKwds})
+		stream := client.PublicStreamSample(nil)
 		log.Printf("updating keywords to: %v", allKwds)
 
 		var wg sync.WaitGroup
