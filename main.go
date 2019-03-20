@@ -92,8 +92,7 @@ type twitterCreds struct {
 type progOptions struct {
 	NumDgrClients    int
 	CredentialsFile  string
-	KeywordsFile     string
-	KWUpdateDuration int64
+	Timeout          time.Duration
 	ReportPeriodSecs int
 	AlphaSockAddr    []string
 }
@@ -129,62 +128,6 @@ type twitterTweet struct {
 	Author    twitterUser   `json:"author"`
 	Mention   []twitterUser `json:"mention,omitempty"`
 	Retweet   bool          `json:"retweet"`
-}
-
-func main() {
-	// TODO: Allow setting these from cmdline.
-	opts = progOptions{
-		NumDgrClients:    6,
-		CredentialsFile:  "credentials.json",
-		KeywordsFile:     "keywords.txt",
-		KWUpdateDuration: 2 * 60 * 60,
-		ReportPeriodSecs: 2,
-		AlphaSockAddr:    []string{":9180", ":9182", ":9183"},
-	}
-
-	creds := readCredentials(opts.CredentialsFile)
-	kwds := readKeyWords(opts.KeywordsFile)
-	client := newTwitterClient(creds)
-	alphas := newAPIClients(opts.AlphaSockAddr)
-
-	// setup schema
-	dgr := dgo.NewDgraphClient(alphas...)
-	op := &api.Operation{
-		Schema: cDgraphSchema,
-	}
-	err := dgr.Alter(context.Background(), op)
-	checkFatal(err, "error in creating indexes")
-
-	// report stats
-	go reportStats()
-	log.Printf("Using %v dgraph clients on %v alphas\n",
-		opts.NumDgrClients, len(opts.AlphaSockAddr))
-
-	// read twitter stream
-	for {
-		// choose top 20 trending keywords
-		trends, err := getTrends(1, client)
-		if len(trends) > 20 {
-			trends = trends[:20]
-		}
-		checkFatal(err, "error in getting trends")
-
-		allKwds := append(kwds, trends...)
-		// stream := client.PublicStreamFilter(map[string][]string{"track": allKwds})
-		stream := client.PublicStreamSample(nil)
-		log.Printf("updating keywords to: %v", allKwds)
-
-		var wg sync.WaitGroup
-		for i := 0; i < opts.NumDgrClients; i++ {
-			wg.Add(1)
-			go runInserter(alphas, &wg, stream.C)
-		}
-
-		time.Sleep(time.Second * time.Duration(opts.KWUpdateDuration))
-		stream.Stop()
-
-		wg.Wait()
-	}
 }
 
 func runInserter(alphas []api.DgraphClient, wg *sync.WaitGroup, tweets <-chan interface{}) {
@@ -412,12 +355,6 @@ func readCredentials(path string) twitterCreds {
 	return creds
 }
 
-func readKeyWords(path string) []string {
-	txt, err := ioutil.ReadFile(path)
-	checkFatal(err, "Unable to read keywords file '%s'", path)
-	return strings.Split(string(txt), "\n")
-}
-
 func newTwitterClient(creds twitterCreds) *anaconda.TwitterApi {
 	client := anaconda.NewTwitterApiWithCredentials(
 		creds.AccessToken, creds.AccessSecret,
@@ -466,5 +403,61 @@ func checkFatal(err error, format string, args ...interface{}) {
 		msg := fmt.Sprintf(format, args...)
 		_, _ = fmt.Fprintf(os.Stderr, "%s: %s\n", msg, err)
 		os.Exit(1)
+	}
+}
+
+func main() {
+	// TODO: Allow setting these from cmdline.
+	opts = progOptions{
+		NumDgrClients:    6,
+		CredentialsFile:  "credentials.json",
+		Timeout:          time.Hour,
+		ReportPeriodSecs: 2,
+		AlphaSockAddr:    []string{":9180", ":9182", ":9183"},
+	}
+
+	creds := readCredentials(opts.CredentialsFile)
+	client := newTwitterClient(creds)
+	alphas := newAPIClients(opts.AlphaSockAddr)
+
+	// setup schema
+	dgr := dgo.NewDgraphClient(alphas...)
+	op := &api.Operation{
+		Schema: cDgraphSchema,
+	}
+	err := dgr.Alter(context.Background(), op)
+	checkFatal(err, "error in creating indexes")
+
+	// report stats
+	go reportStats()
+	log.Printf("Using %v dgraph clients on %v alphas\n",
+		opts.NumDgrClients, len(opts.AlphaSockAddr))
+
+	// read twitter stream
+	for {
+		// choose top 20 trending keywords
+		log.Println("Getting trends...")
+		trends, err := getTrends(1, client)
+		if len(trends) > 20 {
+			trends = trends[:20]
+		}
+		checkFatal(err, "error in getting trends")
+
+		// stream := client.PublicStreamFilter(map[string][]string{"track": allKwds})
+		stream := client.PublicStreamSample(nil)
+		log.Printf("Updating keywords to: %s\n", strings.Join(trends, ", "))
+
+		var wg sync.WaitGroup
+		for i := 0; i < opts.NumDgrClients; i++ {
+			wg.Add(1)
+			go runInserter(alphas, &wg, stream.C)
+		}
+
+		time.Sleep(opts.Timeout)
+		log.Println("Stopping stream...")
+		stream.Stop()
+
+		wg.Wait()
+		log.Println("Stream stopped.")
 	}
 }
