@@ -25,11 +25,11 @@ import (
 	"log"
 	"os"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/ChimeraCoder/anaconda"
+	"github.com/dgraph-io/badger/y"
 	"github.com/dgraph-io/dgo"
 	"github.com/dgraph-io/dgo/protos/api"
 	"google.golang.org/grpc"
@@ -130,53 +130,60 @@ type twitterTweet struct {
 	Retweet   bool          `json:"retweet"`
 }
 
-func runInserter(alphas []api.DgraphClient, wg *sync.WaitGroup, tweets <-chan interface{}) {
-	defer wg.Done()
+func runInserter(alphas []api.DgraphClient, c *y.Closer, tweets <-chan interface{}) {
+	defer c.Done()
 
 	dgr := dgo.NewDgraphClient(alphas...)
-	for jsn := range tweets {
-		atomic.AddUint32(&stats.Tweets, 1)
+loop:
+	for {
+		select {
+		case <-c.HasBeenClosed():
+			break loop
 
-		ft, err := filterTweet(jsn)
-		if err != nil {
-			atomic.AddUint32(&stats.ErrorsJSON, 1)
-			continue
-		}
+		case jsn := <-tweets:
+			atomic.AddUint32(&stats.Tweets, 1)
 
-		// Now, we need query UIDs and ensure they don't already exists
-		txn := dgr.NewTxn()
-		if errTweet := updateFilteredTweet(ft, txn); errTweet != nil {
-			atomic.AddUint32(&stats.ErrorsDgraph, 1)
-			continue
-		}
+			ft, err := filterTweet(jsn)
+			if err != nil {
+				atomic.AddUint32(&stats.ErrorsJSON, 1)
+				continue
+			}
 
-		tweet, err := json.Marshal(ft)
-		if err != nil {
-			atomic.AddUint32(&stats.ErrorsJSON, 1)
-			continue
-		}
+			// Now, we need query UIDs and ensure they don't already exists
+			txn := dgr.NewTxn()
+			if errTweet := updateFilteredTweet(ft, txn); errTweet != nil {
+				atomic.AddUint32(&stats.ErrorsDgraph, 1)
+				continue
+			}
 
-		// only ONE retry attempt is made
-		retry := true
-	RETRY:
-		_, err = txn.Mutate(context.Background(), &api.Mutation{SetJson: tweet, CommitNow: true})
-		switch {
-		case err == nil:
-			atomic.AddUint32(&stats.Commits, 1)
-		case strings.Contains(err.Error(), "connection refused"):
-			// wait for alpha to (re)start
-			log.Printf("ERROR Connection refused... waiting a bit\n")
-			time.Sleep(5 * time.Second)
-		case strings.Contains(err.Error(), "already been committed or discarded"):
-			atomic.AddUint32(&stats.Failures, 1)
-		case retry && strings.Contains(err.Error(), "Please retry"):
-			atomic.AddUint32(&stats.Retries, 1)
-			time.Sleep(100 * time.Millisecond)
-			retry = false
-			goto RETRY
-		default:
-			atomic.AddUint32(&stats.ErrorsDgraph, 1)
-			log.Printf("ERROR Unable to commit: %v\n", err)
+			tweet, err := json.Marshal(ft)
+			if err != nil {
+				atomic.AddUint32(&stats.ErrorsJSON, 1)
+				continue
+			}
+
+			// only ONE retry attempt is made
+			retry := true
+		RETRY:
+			_, err = txn.Mutate(context.Background(), &api.Mutation{SetJson: tweet, CommitNow: true})
+			switch {
+			case err == nil:
+				atomic.AddUint32(&stats.Commits, 1)
+			case strings.Contains(err.Error(), "connection refused"):
+				// wait for alpha to (re)start
+				log.Printf("ERROR Connection refused... waiting a bit\n")
+				time.Sleep(5 * time.Second)
+			case strings.Contains(err.Error(), "already been committed or discarded"):
+				atomic.AddUint32(&stats.Failures, 1)
+			case retry && strings.Contains(err.Error(), "Please retry"):
+				atomic.AddUint32(&stats.Retries, 1)
+				time.Sleep(100 * time.Millisecond)
+				retry = false
+				goto RETRY
+			default:
+				atomic.AddUint32(&stats.ErrorsDgraph, 1)
+				log.Printf("ERROR Unable to commit: %v\n", err)
+			}
 		}
 	}
 }
@@ -447,17 +454,15 @@ func main() {
 		stream := client.PublicStreamSample(nil)
 		log.Printf("Updating keywords to: %s\n", strings.Join(trends, ", "))
 
-		var wg sync.WaitGroup
+		c := y.NewCloser(0)
 		for i := 0; i < opts.NumDgrClients; i++ {
-			wg.Add(1)
-			go runInserter(alphas, &wg, stream.C)
+			c.AddRunning(1)
+			go runInserter(alphas, c, stream.C)
 		}
 
 		time.Sleep(opts.Timeout)
 		log.Println("Stopping stream...")
-		stream.Stop()
-
-		wg.Wait()
+		c.SignalAndWait()
 		log.Println("Stream stopped.")
 	}
 }
