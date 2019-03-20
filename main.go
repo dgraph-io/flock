@@ -134,13 +134,16 @@ func runInserter(alphas []api.DgraphClient, c *y.Closer, tweets <-chan interface
 	defer c.Done()
 
 	dgr := dgo.NewDgraphClient(alphas...)
-loop:
 	for {
 		select {
 		case <-c.HasBeenClosed():
-			break loop
+			return
 
-		case jsn := <-tweets:
+		case jsn, more := <-tweets:
+			if !more {
+				return
+			}
+
 			atomic.AddUint32(&stats.Tweets, 1)
 
 			ft, err := filterTweet(jsn)
@@ -462,6 +465,7 @@ func main() {
 
 		time.Sleep(opts.Timeout)
 		log.Println("Stopping stream...")
+		stream.Stop()
 		c.SignalAndWait()
 		log.Println("Stream stopped.")
 	}
