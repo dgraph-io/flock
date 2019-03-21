@@ -90,7 +90,7 @@ type twitterCreds struct {
 }
 
 type progOptions struct {
-	NumDgrClients    int
+	NumClients       int
 	CredentialsFile  string
 	Timeout          time.Duration
 	ReportPeriodSecs int
@@ -419,7 +419,7 @@ func checkFatal(err error, format string, args ...interface{}) {
 func main() {
 	// TODO: Allow setting these from cmdline.
 	opts = progOptions{
-		NumDgrClients:    6,
+		NumClients:       8,
 		CredentialsFile:  "credentials.json",
 		Timeout:          time.Hour,
 		ReportPeriodSecs: 2,
@@ -441,7 +441,7 @@ func main() {
 	// report stats
 	go reportStats()
 	log.Printf("Using %v dgraph clients on %v alphas\n",
-		opts.NumDgrClients, len(opts.AlphaSockAddr))
+		opts.NumClients, len(opts.AlphaSockAddr))
 
 	// read twitter stream
 	for {
@@ -458,7 +458,7 @@ func main() {
 		log.Printf("Updating keywords to: %s\n", strings.Join(trends, ", "))
 
 		c := y.NewCloser(0)
-		for i := 0; i < opts.NumDgrClients; i++ {
+		for i := 0; i < opts.NumClients; i++ {
 			c.AddRunning(1)
 			go runInserter(alphas, c, stream.C)
 		}
