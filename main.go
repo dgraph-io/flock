@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -392,6 +393,7 @@ func newAPIClients(sockAddr []string) []api.DgraphClient {
 	return clients
 }
 
+// TODO: fix the race condition here
 func reportStats() {
 	var oldStats, newStats progStats
 	log.Printf("Reporting stats every %v seconds\n", opts.ReportPeriodSecs)
@@ -417,13 +419,18 @@ func checkFatal(err error, format string, args ...interface{}) {
 }
 
 func main() {
-	// TODO: Allow setting these from cmdline.
+	dgclients := flag.Int("l", 8, "number of dgraph clients to run")
+	credentialsFile := flag.String("c", "credentials.json", "path to credentials file")
+	programDuration := flag.Int64("t", 3600, "duration in seconds for program")
+	alphasAddress := flag.String("a", ":9180,:9182,:9183", "comma separated addresses to alphas")
+	flag.Parse()
+
 	opts = progOptions{
-		NumClients:       8,
-		CredentialsFile:  "credentials.json",
-		Timeout:          time.Hour,
+		NumClients:       *dgclients,
+		CredentialsFile:  *credentialsFile,
+		Timeout:          time.Duration(*programDuration) * time.Second,
 		ReportPeriodSecs: 2,
-		AlphaSockAddr:    []string{":9180", ":9182", ":9183"},
+		AlphaSockAddr:    strings.Split(*alphasAddress, ","),
 	}
 
 	creds := readCredentials(opts.CredentialsFile)
