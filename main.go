@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"os"
 	"strings"
 	"sync/atomic"
@@ -95,16 +96,18 @@ type progOptions struct {
 	CredentialsFile  string
 	Timeout          time.Duration
 	ReportPeriodSecs int
+	NoCommitRatio    float64
 	AlphaSockAddr    []string
 }
 
 type progStats struct {
-	Tweets       uint32
-	Commits      uint32
-	Retries      uint32
-	Failures     uint32
-	ErrorsJSON   uint32
-	ErrorsDgraph uint32
+	Tweets        uint32
+	Commits       uint32
+	LeakedCommits uint32
+	Retries       uint32
+	Failures      uint32
+	ErrorsJSON    uint32
+	ErrorsDgraph  uint32
 }
 
 type twitterUser struct {
@@ -155,6 +158,9 @@ func runInserter(alphas []api.DgraphClient, c *y.Closer, tweets <-chan interface
 
 			// Now, we need query UIDs and ensure they don't already exists
 			txn := dgr.NewTxn()
+			// txn is not being discarded deliberately
+			// defer txn.Discard()
+
 			if errTweet := updateFilteredTweet(ft, txn); errTweet != nil {
 				atomic.AddUint32(&stats.ErrorsDgraph, 1)
 				continue
@@ -166,13 +172,23 @@ func runInserter(alphas []api.DgraphClient, c *y.Closer, tweets <-chan interface
 				continue
 			}
 
+			commitNow := true
+			if rand.Float64() < opts.NoCommitRatio {
+				commitNow = false
+			}
+
 			// only ONE retry attempt is made
 			retry := true
 		RETRY:
-			_, err = txn.Mutate(context.Background(), &api.Mutation{SetJson: tweet, CommitNow: true})
+			apiMutation := &api.Mutation{SetJson: tweet, CommitNow: commitNow}
+			_, err = txn.Mutate(context.Background(), apiMutation)
 			switch {
 			case err == nil:
-				atomic.AddUint32(&stats.Commits, 1)
+				if commitNow {
+					atomic.AddUint32(&stats.Commits, 1)
+				} else {
+					atomic.AddUint32(&stats.LeakedCommits, 1)
+				}
 			case strings.Contains(err.Error(), "connection refused"):
 				// wait for alpha to (re)start
 				log.Printf("ERROR Connection refused... waiting a bit\n")
@@ -400,10 +416,10 @@ func reportStats() {
 	for {
 		newStats = stats
 		time.Sleep(time.Second * time.Duration(opts.ReportPeriodSecs))
-		log.Printf("STATS tweets: %d, commits: %d, json_errs: %d, "+
+		log.Printf("STATS tweets: %d, commits: %d, leaked: %d, json_errs: %d, "+
 			"retries: %d, failures: %d, dgraph_errs: %d, "+
 			"commit_rate: %d/sec\n",
-			newStats.Tweets, newStats.Commits, newStats.ErrorsJSON,
+			newStats.Tweets, newStats.Commits, newStats.LeakedCommits, newStats.ErrorsJSON,
 			newStats.Retries, newStats.Failures, newStats.ErrorsDgraph,
 			(newStats.Tweets-oldStats.Tweets)/uint32(opts.ReportPeriodSecs))
 		oldStats = newStats
@@ -422,14 +438,19 @@ func main() {
 	dgclients := flag.Int("l", 8, "number of dgraph clients to run")
 	credentialsFile := flag.String("c", "credentials.json", "path to credentials file")
 	programDuration := flag.Int64("t", 3600, "duration in seconds for program")
+	noCommitRatio := flag.Float64("p", 0, "prob of CommitNow=False, from 0.0 to 1.0")
 	alphasAddress := flag.String("a", ":9180,:9182,:9183", "comma separated addresses to alphas")
 	flag.Parse()
 
+	if *noCommitRatio > 1 || *noCommitRatio < 0 {
+		log.Fatalf("invalid value for commit=false probability")
+	}
 	opts = progOptions{
 		NumClients:       *dgclients,
 		CredentialsFile:  *credentialsFile,
 		Timeout:          time.Duration(*programDuration) * time.Second,
 		ReportPeriodSecs: 2,
+		NoCommitRatio:    *noCommitRatio,
 		AlphaSockAddr:    strings.Split(*alphasAddress, ","),
 	}
 
