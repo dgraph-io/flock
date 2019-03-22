@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"os"
 	"strings"
 	"sync/atomic"
@@ -95,6 +96,7 @@ type progOptions struct {
 	CredentialsFile  string
 	Timeout          time.Duration
 	ReportPeriodSecs int
+	CommitFalseProb  float64
 	AlphaSockAddr    []string
 }
 
@@ -166,13 +168,21 @@ func runInserter(alphas []api.DgraphClient, c *y.Closer, tweets <-chan interface
 				continue
 			}
 
+			commitNow := true
+			if rand.Float64() < opts.CommitFalseProb {
+				commitNow = false
+			}
+
 			// only ONE retry attempt is made
 			retry := true
 		RETRY:
-			_, err = txn.Mutate(context.Background(), &api.Mutation{SetJson: tweet, CommitNow: true})
+			mut := &api.Mutation{SetJson: tweet, CommitNow: commitNow}
+			_, err = txn.Mutate(context.Background(), mut)
 			switch {
 			case err == nil:
-				atomic.AddUint32(&stats.Commits, 1)
+				if commitNow {
+					atomic.AddUint32(&stats.Commits, 1)
+				}
 			case strings.Contains(err.Error(), "connection refused"):
 				// wait for alpha to (re)start
 				log.Printf("ERROR Connection refused... waiting a bit\n")
@@ -422,14 +432,19 @@ func main() {
 	dgclients := flag.Int("l", 8, "number of dgraph clients to run")
 	credentialsFile := flag.String("c", "credentials.json", "path to credentials file")
 	programDuration := flag.Int64("t", 3600, "duration in seconds for program")
+	commitFalseProb := flag.Float64("p", 0, "prob of CommitNow=False, from 0 to 1")
 	alphasAddress := flag.String("a", ":9180,:9182,:9183", "comma separated addresses to alphas")
 	flag.Parse()
 
+	if *commitFalseProb > 1 || *commitFalseProb < 0 {
+		log.Fatalf("invalid value for commit=false probability")
+	}
 	opts = progOptions{
 		NumClients:       *dgclients,
 		CredentialsFile:  *credentialsFile,
 		Timeout:          time.Duration(*programDuration) * time.Second,
 		ReportPeriodSecs: 2,
+		CommitFalseProb:  *commitFalseProb,
 		AlphaSockAddr:    strings.Split(*alphasAddress, ","),
 	}
 
