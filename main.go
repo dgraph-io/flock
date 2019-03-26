@@ -49,6 +49,8 @@ screen_name: string @index(term) .
 id_str: string @index(exact) @upsert .
 created_at: dateTime @index(hour) .
 hashtags: [string] @index(exact) .
+
+author: uid @reverse .
 `
 
 	cDgraphTweetQuery = `
