@@ -131,7 +131,11 @@ query all($tagVal: string) {
 		return err
 	}
 
-	// ensure that each query has the hashtag that we asked for
+	// verification
+	if len(r.QueryData) <= 0 {
+		log.Printf("empty response returned from Dgraph for query: %v\n", query)
+		return errInvalidResponse
+	}
 	for _, t := range r.QueryData {
 		if !strings.Contains(t.Message, hashtag) {
 			log.Printf("message doesn't contain hashtag, hashtag: %v, message: %v\n",
@@ -245,6 +249,10 @@ query all($screenName: string) {
 	}
 
 	// verification
+	if len(r.QueryData) <= 0 {
+		log.Printf("empty response returned from Dgraph for query: %v\n", query)
+		return errInvalidResponse
+	}
 	for _, t := range r.QueryData {
 		if !strings.Contains(t.ScreenName, screenName) {
 			log.Printf("screen name doesn't match, expected: %v, actual: %v\n",
@@ -317,6 +325,10 @@ func (q *queryThree) runQuery(dgr *dgo.Dgraph) error {
 	}
 
 	// verification
+	if len(r.QueryData) <= 0 {
+		log.Printf("empty response returned from Dgraph for query: %v\n", query)
+		return errInvalidResponse
+	}
 	prevValue := int64(-1)
 	for _, t := range r.QueryData {
 		if prevValue != -1 && prevValue < t.TotalMentions {
@@ -346,7 +358,7 @@ func (q *queryFour) runQuery(dgr *dgo.Dgraph) error {
     a as count(~author)
   }
 
-  q(func: uid(a), orderdesc: val(a), first: 100, offset: %v) {
+  dataquery(func: uid(a), orderdesc: val(a), first: 100, offset: %v) {
     uid
     screen_name
     user_id
@@ -386,6 +398,10 @@ func (q *queryFour) runQuery(dgr *dgo.Dgraph) error {
 	}
 
 	// verification
+	if len(r.QueryData) <= 0 {
+		log.Printf("empty response returned from Dgraph for query: %v\n", query)
+		return errInvalidResponse
+	}
 	prevValue := int64(-1)
 	for _, t := range r.QueryData {
 		if prevValue != -1 && prevValue < t.TotalTweets {
@@ -393,6 +409,114 @@ func (q *queryFour) runQuery(dgr *dgo.Dgraph) error {
 		}
 
 		if t.UID == "" || t.UserID == "" || t.UserName == "" || t.ImageURL == "" {
+			log.Printf("response is empty :: %+v\n", t)
+			return errInvalidResponse
+		}
+	}
+
+	return nil
+}
+
+// Query Type 5
+type queryFive struct {
+	userIDs []string
+}
+
+func (q *queryFive) getParams(dgr *dgo.Dgraph) error {
+	query := fmt.Sprintf(`
+{
+  dataquery(func: has(user_id), first: 100, offset: %v) {
+    user_id
+  }
+}
+`, rand.Intn(1000))
+
+	txn := dgr.NewReadOnlyTxn()
+	resp, err := txn.Query(context.Background(), query)
+	if err != nil {
+		log.Printf("error in querying dgraph :: %v\n", err)
+		return err
+	}
+
+	var r struct {
+		QueryData []struct {
+			UserID string `json:"user_id"`
+		} `json:"dataquery"`
+	}
+	if err := json.Unmarshal(resp.Json, &r); err != nil {
+		log.Printf("error in unmarshalling result :: %v\n", err)
+		return err
+	}
+
+	userIDs := make(map[string]bool)
+	for _, u := range r.QueryData {
+		if u.UserID != "" {
+			userIDs[u.UserID] = true
+		}
+	}
+
+	q.userIDs = make([]string, 0, len(userIDs))
+	for h := range userIDs {
+		q.userIDs = append(q.userIDs, h)
+	}
+
+	return nil
+}
+
+func (q *queryFive) runQuery(dgr *dgo.Dgraph) error {
+	const query = `
+query all($userID: string) {
+  dataquery(func: eq(user_id, $userID)) {
+    uid
+    screen_name
+    user_id
+    user_name
+    profile_banner_url
+    profile_image_url
+    friends_count
+	description
+  }
+}
+`
+	userID := q.userIDs[rand.Intn(len(q.userIDs))]
+	txn := dgr.NewReadOnlyTxn()
+	resp, err := txn.QueryWithVars(context.Background(), query,
+		map[string]string{"$userID": userID})
+	if err != nil {
+		log.Printf("error in querying dgraph :: %v\n", err)
+		return err
+	}
+
+	var r struct {
+		QueryData []struct {
+			UID          string `json:"uid"`
+			ScreenName   string `json:"screen_name"`
+			UserID       string `json:"user_id"`
+			UserName     string `json:"user_name"`
+			BannerURL    string `json:"profile_banner_url"`
+			ImageURL     string `json:"profile_image_url"`
+			FriendsCount int64  `json:"friends_count"`
+			Description  string `json:"description"`
+		} `json:"dataquery"`
+	}
+	if err := json.Unmarshal(resp.Json, &r); err != nil {
+		log.Printf("error in unmarshalling result :: %v\n", err)
+		return err
+	}
+
+	// verification
+	if len(r.QueryData) <= 0 {
+		log.Printf("empty response returned from Dgraph for query: %v\n", query)
+		return errInvalidResponse
+	}
+	for _, t := range r.QueryData {
+		if !strings.Contains(t.UserID, userID) {
+			log.Printf("screen name doesn't match, expected: %v, actual: %v\n",
+				userID, t.UserID)
+			return errInvalidResponse
+		}
+
+		if t.UID == "" || t.ScreenName == "" || t.UserName == "" || t.ImageURL == "" {
 			log.Printf("response is empty :: %+v\n", t)
 			return errInvalidResponse
 		}
@@ -435,6 +559,10 @@ func main() {
 		&queryFour{},
 		&queryFour{},
 		&queryFour{},
+		&queryFive{},
+		&queryFive{},
+		&queryFive{},
+		&queryFive{},
 	}
 
 	dgclients := flag.Int("l", 6, "number of dgraph clients to run")
