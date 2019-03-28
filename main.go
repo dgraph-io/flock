@@ -51,6 +51,7 @@ created_at: dateTime @index(hour) .
 hashtags: [string] @index(exact) .
 
 author: uid @reverse .
+mention: uid @reverse .
 `
 
 	cDgraphTweetQuery = `
