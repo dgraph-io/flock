@@ -64,7 +64,7 @@ func (q *queryOne) getParams(dgr *dgo.Dgraph) error {
 	txn := dgr.NewReadOnlyTxn()
 	resp, err := txn.Query(context.Background(), query)
 	if err != nil {
-		log.Printf("error in quering dgraph :: %v\n", err)
+		log.Printf("error in quering dgraph :: %v", err)
 		return err
 	}
 
@@ -74,7 +74,7 @@ func (q *queryOne) getParams(dgr *dgo.Dgraph) error {
 		} `json:"dataquery"`
 	}
 	if err := json.Unmarshal(resp.Json, &r); err != nil {
-		log.Printf("error in unmarshaling result :: %v\n", err)
+		log.Printf("error in unmarshaling result :: %v", err)
 		return err
 	}
 
@@ -90,6 +90,11 @@ func (q *queryOne) getParams(dgr *dgo.Dgraph) error {
 	q.hashtags = make([]string, 0, len(hashtags))
 	for h := range hashtags {
 		q.hashtags = append(q.hashtags, h)
+	}
+
+	if len(q.hashtags) <= 0 {
+		log.Printf("not enough data to run query: %v", query)
+		return errInvalidResponse
 	}
 
 	return nil
@@ -113,7 +118,7 @@ query all($tagVal: string) {
 	resp, err := txn.QueryWithVars(context.Background(), query,
 		map[string]string{"$tagVal": hashtag})
 	if err != nil {
-		log.Printf("error in quering dgraph :: %v\n", err)
+		log.Printf("error in quering dgraph :: %v", err)
 		return err
 	}
 
@@ -127,18 +132,18 @@ query all($tagVal: string) {
 		} `json:"dataquery"`
 	}
 	if err := json.Unmarshal(resp.Json, &r); err != nil {
-		log.Printf("error in unmarshalling result :: %v\n", err)
+		log.Printf("error in unmarshalling result :: %v", err)
 		return err
 	}
 
 	// verification
 	if len(r.QueryData) <= 0 {
-		log.Printf("empty response returned from Dgraph for query: %v\n", query)
+		log.Printf("empty response returned from Dgraph for query: %v", query)
 		return errInvalidResponse
 	}
 	for _, t := range r.QueryData {
 		if !strings.Contains(t.Message, hashtag) {
-			log.Printf("message doesn't contain hashtag, hashtag: %v, message: %v\n",
+			log.Printf("message doesn't contain hashtag, hashtag: %v, message: %v",
 				hashtag, t.Message)
 			return errInvalidResponse
 		}
@@ -152,7 +157,7 @@ query all($tagVal: string) {
 		}
 
 		if !found {
-			log.Printf("response doesn't contain hashtag, expected: %v, actual: %v\n",
+			log.Printf("response doesn't contain hashtag, expected: %v, actual: %v",
 				hashtag, t.Hashtags)
 			return errInvalidResponse
 		}
@@ -178,7 +183,7 @@ func (q *queryTwo) getParams(dgr *dgo.Dgraph) error {
 	txn := dgr.NewReadOnlyTxn()
 	resp, err := txn.Query(context.Background(), query)
 	if err != nil {
-		log.Printf("error in querying dgraph :: %v\n", err)
+		log.Printf("error in querying dgraph :: %v", err)
 		return err
 	}
 
@@ -188,7 +193,7 @@ func (q *queryTwo) getParams(dgr *dgo.Dgraph) error {
 		} `json:"dataquery"`
 	}
 	if err := json.Unmarshal(resp.Json, &r); err != nil {
-		log.Printf("error in unmarshalling result :: %v\n", err)
+		log.Printf("error in unmarshalling result :: %v", err)
 		return err
 	}
 
@@ -202,6 +207,11 @@ func (q *queryTwo) getParams(dgr *dgo.Dgraph) error {
 	q.screenNames = make([]string, 0, len(screenNames))
 	for h := range screenNames {
 		q.screenNames = append(q.screenNames, h)
+	}
+
+	if len(q.screenNames) <= 0 {
+		log.Printf("not enough data to run query: %v", query)
+		return errInvalidResponse
 	}
 
 	return nil
@@ -227,7 +237,7 @@ query all($screenName: string) {
 	resp, err := txn.QueryWithVars(context.Background(), query,
 		map[string]string{"$screenName": screenName})
 	if err != nil {
-		log.Printf("error in querying dgraph :: %v\n", err)
+		log.Printf("error in querying dgraph :: %v", err)
 		return err
 	}
 
@@ -244,24 +254,24 @@ query all($screenName: string) {
 		} `json:"dataquery"`
 	}
 	if err := json.Unmarshal(resp.Json, &r); err != nil {
-		log.Printf("error in unmarshalling result :: %v\n", err)
+		log.Printf("error in unmarshalling result :: %v", err)
 		return err
 	}
 
 	// verification
 	if len(r.QueryData) <= 0 {
-		log.Printf("empty response returned from Dgraph for query: %v\n", query)
+		log.Printf("empty response returned from Dgraph for query: %v", query)
 		return errInvalidResponse
 	}
 	for _, t := range r.QueryData {
 		if !strings.Contains(t.ScreenName, screenName) {
-			log.Printf("screen name doesn't match, expected: %v, actual: %v\n",
+			log.Printf("screen name doesn't match, expected: %v, actual: %v",
 				screenName, t.ScreenName)
 			return errInvalidResponse
 		}
 
 		if t.UID == "" || t.UserID == "" || t.UserName == "" || t.ImageURL == "" {
-			log.Printf("response is empty :: %+v\n", t)
+			log.Printf("response is empty :: %+v", t)
 			return errInvalidResponse
 		}
 	}
@@ -297,12 +307,12 @@ func (q *queryThree) runQuery(dgr *dgo.Dgraph) error {
     total_mentions : val(a)
   }
 }
-`, rand.Intn(1000))
+`, rand.Intn(10))
 
 	txn := dgr.NewReadOnlyTxn()
 	resp, err := txn.Query(context.Background(), query)
 	if err != nil {
-		log.Printf("error in querying dgraph :: %v\n", err)
+		log.Printf("error in querying dgraph :: %v", err)
 		return err
 	}
 
@@ -320,23 +330,23 @@ func (q *queryThree) runQuery(dgr *dgo.Dgraph) error {
 		} `json:"dataquery"`
 	}
 	if err := json.Unmarshal(resp.Json, &r); err != nil {
-		log.Printf("error in unmarshalling result :: %v\n", err)
+		log.Printf("error in unmarshalling result :: %v", err)
 		return err
 	}
 
 	// verification
 	if len(r.QueryData) <= 0 {
-		log.Printf("empty response returned from Dgraph for query: %v\n", query)
+		log.Printf("empty response returned from Dgraph for query: %v", query)
 		return errInvalidResponse
 	}
 	prevValue := int64(-1)
 	for _, t := range r.QueryData {
 		if prevValue != -1 && prevValue < t.TotalMentions {
-			log.Printf("the mentions are not sorted, resp: %v\n", t)
+			log.Printf("the mentions are not sorted, resp: %v", t)
 		}
 
 		if t.UID == "" || t.UserID == "" || t.UserName == "" || t.ImageURL == "" {
-			log.Printf("response is empty :: %+v\n", t)
+			log.Printf("response is empty :: %+v", t)
 			return errInvalidResponse
 		}
 	}
@@ -375,7 +385,7 @@ func (q *queryFour) runQuery(dgr *dgo.Dgraph) error {
 	txn := dgr.NewReadOnlyTxn()
 	resp, err := txn.Query(context.Background(), query)
 	if err != nil {
-		log.Printf("error in querying dgraph :: %v\n", err)
+		log.Printf("error in querying dgraph :: %v", err)
 		return err
 	}
 
@@ -393,23 +403,23 @@ func (q *queryFour) runQuery(dgr *dgo.Dgraph) error {
 		} `json:"dataquery"`
 	}
 	if err := json.Unmarshal(resp.Json, &r); err != nil {
-		log.Printf("error in unmarshalling result :: %v\n", err)
+		log.Printf("error in unmarshalling result :: %v", err)
 		return err
 	}
 
 	// verification
 	if len(r.QueryData) <= 0 {
-		log.Printf("empty response returned from Dgraph for query: %v\n", query)
+		log.Printf("empty response returned from Dgraph for query: %v", query)
 		return errInvalidResponse
 	}
 	prevValue := int64(-1)
 	for _, t := range r.QueryData {
 		if prevValue != -1 && prevValue < t.TotalTweets {
-			log.Printf("the users are not sorted, resp: %v\n", t)
+			log.Printf("the users are not sorted, resp: %v", t)
 		}
 
 		if t.UID == "" || t.UserID == "" || t.UserName == "" || t.ImageURL == "" {
-			log.Printf("response is empty :: %+v\n", t)
+			log.Printf("response is empty :: %+v", t)
 			return errInvalidResponse
 		}
 	}
@@ -434,7 +444,7 @@ func (q *queryFive) getParams(dgr *dgo.Dgraph) error {
 	txn := dgr.NewReadOnlyTxn()
 	resp, err := txn.Query(context.Background(), query)
 	if err != nil {
-		log.Printf("error in querying dgraph :: %v\n", err)
+		log.Printf("error in querying dgraph :: %v", err)
 		return err
 	}
 
@@ -444,7 +454,7 @@ func (q *queryFive) getParams(dgr *dgo.Dgraph) error {
 		} `json:"dataquery"`
 	}
 	if err := json.Unmarshal(resp.Json, &r); err != nil {
-		log.Printf("error in unmarshalling result :: %v\n", err)
+		log.Printf("error in unmarshalling result :: %v", err)
 		return err
 	}
 
@@ -458,6 +468,11 @@ func (q *queryFive) getParams(dgr *dgo.Dgraph) error {
 	q.userIDs = make([]string, 0, len(userIDs))
 	for h := range userIDs {
 		q.userIDs = append(q.userIDs, h)
+	}
+
+	if len(q.userIDs) <= 0 {
+		log.Printf("not enough data to run query: %v", query)
+		return errInvalidResponse
 	}
 
 	return nil
@@ -483,7 +498,7 @@ query all($userID: string) {
 	resp, err := txn.QueryWithVars(context.Background(), query,
 		map[string]string{"$userID": userID})
 	if err != nil {
-		log.Printf("error in querying dgraph :: %v\n", err)
+		log.Printf("error in querying dgraph :: %v", err)
 		return err
 	}
 
@@ -500,26 +515,98 @@ query all($userID: string) {
 		} `json:"dataquery"`
 	}
 	if err := json.Unmarshal(resp.Json, &r); err != nil {
-		log.Printf("error in unmarshalling result :: %v\n", err)
+		log.Printf("error in unmarshalling result :: %v", err)
 		return err
 	}
 
 	// verification
 	if len(r.QueryData) <= 0 {
-		log.Printf("empty response returned from Dgraph for query: %v\n", query)
+		log.Printf("empty response returned from Dgraph for query: %v", query)
 		return errInvalidResponse
 	}
 	for _, t := range r.QueryData {
 		if !strings.Contains(t.UserID, userID) {
-			log.Printf("screen name doesn't match, expected: %v, actual: %v\n",
+			log.Printf("screen name doesn't match, expected: %v, actual: %v",
 				userID, t.UserID)
 			return errInvalidResponse
 		}
 
 		if t.UID == "" || t.ScreenName == "" || t.UserName == "" || t.ImageURL == "" {
-			log.Printf("response is empty :: %+v\n", t)
+			log.Printf("response is empty :: %+v", t)
 			return errInvalidResponse
 		}
+	}
+
+	return nil
+}
+
+// Query Type 6
+type querySix struct {
+	queryOne
+}
+
+func (q *querySix) getParams(dgr *dgo.Dgraph) error {
+	// we subtract 41 hours because that's the latest data we get from twitter
+	curTime := time.Now().Add(-41 * time.Hour)
+
+	query := fmt.Sprintf(`
+{
+  dataquery(func:has(hashtags), first: 100, offset: %v) @filter(ge(created_at, "%v")) {
+		hashtags
+		created_at
+  }
+}
+`, rand.Intn(1000), curTime.Format(time.RFC3339))
+
+	txn := dgr.NewReadOnlyTxn()
+	resp, err := txn.Query(context.Background(), query)
+	if err != nil {
+		log.Printf("error in quering dgraph :: %v", err)
+		return err
+	}
+
+	var r struct {
+		QueryData []struct {
+			Hashtags  []string `json:"hashtags"`
+			CreatedAt string   `json:"created_at"`
+		} `json:"dataquery"`
+	}
+	if err := json.Unmarshal(resp.Json, &r); err != nil {
+		log.Printf("error in unmarshaling result :: %v", err)
+		return err
+	}
+
+	// verify that our query returned tweets with newer timestamps
+	for _, t := range r.QueryData {
+		c, err := time.Parse(time.RFC3339, t.CreatedAt)
+		if err != nil {
+			log.Printf("dgraph returned unparse-able timestamp: %v :: %v", t.CreatedAt, err)
+			return err
+		}
+
+		if !c.After(curTime) {
+			log.Printf("dgraph returned old ts, ret: %v, cur: %v", c, curTime)
+			return errInvalidResponse
+		}
+	}
+
+	hashtags := make(map[string]bool)
+	for _, t := range r.QueryData {
+		for _, h := range t.Hashtags {
+			if h != "" {
+				hashtags[h] = true
+			}
+		}
+	}
+
+	q.hashtags = make([]string, 0, len(hashtags))
+	for h := range hashtags {
+		q.hashtags = append(q.hashtags, h)
+	}
+
+	if len(q.hashtags) <= 0 {
+		log.Printf("not enough data to run query: %v", query)
+		return errInvalidResponse
 	}
 
 	return nil
@@ -563,6 +650,7 @@ func main() {
 		&queryFive{},
 		&queryFive{},
 		&queryFive{},
+		&querySix{},
 	}
 
 	dgclients := flag.Int("l", 6, "number of dgraph clients to run")
@@ -585,7 +673,7 @@ func main() {
 
 	// report stats
 	go reportStats()
-	log.Printf("Using %v dgraph clients on %v alphas\n",
+	log.Printf("Using %v dgraph clients on %v alphas",
 		opts.NumDgrClients, len(opts.AlphaSockAddr))
 
 	// run queries
@@ -606,22 +694,30 @@ func runQuery(alphas []api.DgraphClient, wg *sync.WaitGroup,
 
 	dgr := dgo.NewDgraphClient(alphas...)
 	for {
+		// run parameter query
 		th.Do()
-		if err := query.getParams(dgr); err != nil {
+		err := query.getParams(dgr)
+		th.Done(nil)
+
+		if err != nil {
 			atomic.AddUint32(&stats.Failures, 1)
 			log.Printf("error in running parameter query :: %v", err)
 			continue
 		}
-		th.Done(nil)
 
+		atomic.AddUint32(&stats.Success, 1)
+
+		// run actual queries
 		for i := 0; i < 100; i++ {
 			th.Do()
-			if err := query.runQuery(dgr); err != nil {
+			err := query.runQuery(dgr)
+			th.Done(nil)
+
+			if err != nil {
 				atomic.AddUint32(&stats.Failures, 1)
 				log.Printf("error in running query :: %v", err)
 				continue
 			}
-			th.Done(nil)
 
 			atomic.AddUint32(&stats.Success, 1)
 		}
@@ -631,13 +727,13 @@ func runQuery(alphas []api.DgraphClient, wg *sync.WaitGroup,
 // TODO: fix the race condition here
 func reportStats() {
 	var oldStats, newStats progStats
-	log.Printf("Reporting stats every %v seconds\n", opts.ReportPeriodSecs)
+	log.Printf("Reporting stats every %v seconds", opts.ReportPeriodSecs)
 	for {
 		time.Sleep(time.Second * time.Duration(opts.ReportPeriodSecs))
 
 		oldStats = newStats
 		newStats = stats
-		log.Printf("STATS success: %d, failures: %d, query_rate: %d/sec\n",
+		log.Printf("STATS success: %d, failures: %d, query_rate: %d/sec",
 			newStats.Success, newStats.Failures,
 			(newStats.Success-oldStats.Success)/uint32(opts.ReportPeriodSecs))
 	}
