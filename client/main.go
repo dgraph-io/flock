@@ -489,7 +489,7 @@ query all($userID: string) {
     profile_banner_url
     profile_image_url
     friends_count
-	description
+    description
   }
 }
 `
@@ -552,8 +552,8 @@ func (q *querySix) getParams(dgr *dgo.Dgraph) error {
 	query := fmt.Sprintf(`
 {
   dataquery(func:has(hashtags), first: 100, offset: %v) @filter(ge(created_at, "%v")) {
-		hashtags
-		created_at
+    hashtags
+    created_at
   }
 }
 `, rand.Intn(1000), curTime.Format(time.RFC3339))
@@ -585,7 +585,7 @@ func (q *querySix) getParams(dgr *dgo.Dgraph) error {
 		}
 
 		if !c.After(curTime) {
-			log.Printf("dgraph returned old ts, ret: %v, cur: %v", c, curTime)
+			log.Printf("dgraph returned old ts, query: %v, ret: %v, cur: %v", query, c, curTime)
 			return errInvalidResponse
 		}
 	}
@@ -612,47 +612,263 @@ func (q *querySix) getParams(dgr *dgo.Dgraph) error {
 	return nil
 }
 
+// Query Type 7
+type querySeven struct {
+	queryTwo
+}
+
+func (q *querySeven) getParams(dgr *dgo.Dgraph) error {
+	// we subtract 41 hours because that's the latest data we get from twitter
+	curTime := time.Now().Add(-41 * time.Hour)
+
+	query := fmt.Sprintf(`
+{
+  dataquery(func: has(screen_name), first: 100, offset: %v) @cascade {
+    screen_name
+    ~author @filter(ge(created_at, "%v")) {
+      created_at
+    }
+  }
+}
+`, rand.Intn(1000), curTime.Format(time.RFC3339))
+
+	txn := dgr.NewReadOnlyTxn()
+	resp, err := txn.Query(context.Background(), query)
+	if err != nil {
+		log.Printf("error in querying dgraph :: %v", err)
+		return err
+	}
+
+	var r struct {
+		QueryData []struct {
+			ScreenName string `json:"screen_name"`
+			Tweet      []struct {
+				CreatedAt string `json:"created_at"`
+			} `json:"~author"`
+		} `json:"dataquery"`
+	}
+	if err := json.Unmarshal(resp.Json, &r); err != nil {
+		log.Printf("error in unmarshalling result :: %v", err)
+		return err
+	}
+
+	// verify that our query returned tweets with newer timestamps
+	for _, t := range r.QueryData {
+		c, err := time.Parse(time.RFC3339, t.Tweet[0].CreatedAt)
+		if err != nil {
+			log.Printf("dgraph returned unparse-able timestamp: %v :: %v", t.Tweet[0].CreatedAt, err)
+			return err
+		}
+
+		if !c.After(curTime) {
+			log.Printf("dgraph returned old ts, query: %v, ret: %v, cur: %v", query, c, curTime)
+			return errInvalidResponse
+		}
+	}
+
+	screenNames := make(map[string]bool)
+	for _, u := range r.QueryData {
+		if u.ScreenName != "" {
+			screenNames[u.ScreenName] = true
+		}
+	}
+
+	q.screenNames = make([]string, 0, len(screenNames))
+	for h := range screenNames {
+		q.screenNames = append(q.screenNames, h)
+	}
+
+	if len(q.screenNames) <= 0 {
+		log.Printf("not enough data to run query: %v", query)
+		return errInvalidResponse
+	}
+
+	return nil
+}
+
+// Query Type 8
+type queryEight struct {
+	queryFour
+}
+
+func (q *queryEight) runQuery(dgr *dgo.Dgraph) error {
+	// we subtract 41 hours because that's the latest data we get from twitter
+	curTime := time.Now().Add(-41 * time.Hour)
+
+	query := fmt.Sprintf(`
+{
+  var(func: has(user_id)) @cascade {
+    a as count(~author)
+    ~author @filter(ge(created_at, "%v")) {
+      created_at
+    }
+  }
+
+  dataquery(func: uid(a), orderdesc: val(a), first: 100, offset: %v) {
+    uid
+    screen_name
+    user_id
+    user_name
+    profile_banner_url
+    profile_image_url
+    friends_count
+    description
+    total_tweets : val(a)
+    ~author @filter(ge(created_at, "%v")) {
+      created_at
+    }
+  }
+}
+`, curTime.Format(time.RFC3339), rand.Intn(1000), curTime.Format(time.RFC3339))
+
+	txn := dgr.NewReadOnlyTxn()
+	resp, err := txn.Query(context.Background(), query)
+	if err != nil {
+		log.Printf("error in querying dgraph, query: %v :: %v", query, err)
+		return err
+	}
+
+	var r struct {
+		QueryData []struct {
+			UID          string `json:"uid"`
+			ScreenName   string `json:"screen_name"`
+			UserID       string `json:"user_id"`
+			UserName     string `json:"user_name"`
+			BannerURL    string `json:"profile_banner_url"`
+			ImageURL     string `json:"profile_image_url"`
+			FriendsCount int64  `json:"friends_count"`
+			Description  string `json:"description"`
+			TotalTweets  int64  `json:"total_tweets"`
+			Tweet        []struct {
+				CreatedAt string `json:"created_at"`
+			} `json:"~author"`
+		} `json:"dataquery"`
+	}
+	if err := json.Unmarshal(resp.Json, &r); err != nil {
+		log.Printf("error in unmarshalling result :: %v", err)
+		return err
+	}
+
+	// verify that our query returned tweets with newer timestamps
+	for _, t := range r.QueryData {
+		c, err := time.Parse(time.RFC3339, t.Tweet[0].CreatedAt)
+		if err != nil {
+			log.Printf("dgraph returned unparse-able timestamp: %v :: %v", t.Tweet[0].CreatedAt, err)
+			return err
+		}
+
+		if !c.After(curTime) {
+			log.Printf("dgraph returned old ts, query: %v, ret: %v, cur: %v", query, c, curTime)
+			return errInvalidResponse
+		}
+	}
+
+	// verification
+	if len(r.QueryData) <= 0 {
+		log.Printf("empty response returned from Dgraph for query: %v", query)
+		return errInvalidResponse
+	}
+	prevValue := int64(-1)
+	for _, t := range r.QueryData {
+		if prevValue != -1 && prevValue < t.TotalTweets {
+			log.Printf("the users are not sorted, resp: %v", t)
+		}
+
+		if t.UID == "" || t.UserID == "" || t.ImageURL == "" {
+			log.Printf("response is empty :: %+v", t)
+			return errInvalidResponse
+		}
+	}
+
+	return nil
+}
+
+// Query Type 9
+type queryNine struct {
+	queryFive
+}
+
+func (q *queryNine) getParams(dgr *dgo.Dgraph) error {
+	// we subtract 41 hours because that's the latest data we get from twitter
+	curTime := time.Now().Add(-41 * time.Hour)
+
+	query := fmt.Sprintf(`
+{
+  dataquery(func: has(user_id), first: 100, offset: %v) @cascade {
+		user_id
+		~author @filter(ge(created_at, "%v")) {
+      created_at
+    }
+  }
+}
+`, rand.Intn(1000), curTime.Format(time.RFC3339))
+
+	txn := dgr.NewReadOnlyTxn()
+	resp, err := txn.Query(context.Background(), query)
+	if err != nil {
+		log.Printf("error in querying dgraph :: %v", err)
+		return err
+	}
+
+	var r struct {
+		QueryData []struct {
+			UserID string `json:"user_id"`
+			Tweet  []struct {
+				CreatedAt string `json:"created_at"`
+			} `json:"~author"`
+		} `json:"dataquery"`
+	}
+	if err := json.Unmarshal(resp.Json, &r); err != nil {
+		log.Printf("error in unmarshalling result :: %v", err)
+		return err
+	}
+
+	// verify that our query returned tweets with newer timestamps
+	for _, t := range r.QueryData {
+		c, err := time.Parse(time.RFC3339, t.Tweet[0].CreatedAt)
+		if err != nil {
+			log.Printf("dgraph returned unparse-able timestamp: %v :: %v", t.Tweet[0].CreatedAt, err)
+			return err
+		}
+
+		if !c.After(curTime) {
+			log.Printf("dgraph returned old ts, query: %v, ret: %v, cur: %v", query, c, curTime)
+			return errInvalidResponse
+		}
+	}
+
+	userIDs := make(map[string]bool)
+	for _, u := range r.QueryData {
+		if u.UserID != "" {
+			userIDs[u.UserID] = true
+		}
+	}
+
+	q.userIDs = make([]string, 0, len(userIDs))
+	for h := range userIDs {
+		q.userIDs = append(q.userIDs, h)
+	}
+
+	if len(q.userIDs) <= 0 {
+		log.Printf("not enough data to run query: %v", query)
+		return errInvalidResponse
+	}
+
+	return nil
+}
+
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 
 	allQueries := []dgraphQuery{
-		&queryOne{},
-		&queryOne{},
-		&queryOne{},
-		&queryOne{},
-		&queryOne{},
-		&queryOne{},
-		&queryOne{},
-		&queryOne{},
-		&queryOne{},
-		&queryOne{},
-		&queryTwo{},
-		&queryTwo{},
-		&queryTwo{},
-		&queryTwo{},
-		&queryTwo{},
-		&queryTwo{},
-		&queryTwo{},
-		&queryTwo{},
-		&queryTwo{},
-		&queryTwo{},
-		&queryThree{},
-		&queryThree{},
-		&queryThree{},
-		&queryThree{},
-		&queryThree{},
-		&queryFour{},
-		&queryFour{},
-		&queryFour{},
-		&queryFour{},
-		&queryFour{},
-		&queryFour{},
-		&queryFour{},
-		&queryFive{},
-		&queryFive{},
-		&queryFive{},
-		&queryFive{},
-		&querySix{},
+		&queryOne{}, &queryOne{}, &queryOne{}, &queryOne{}, &queryOne{}, &queryOne{},
+		&queryTwo{}, &queryTwo{}, &queryTwo{}, &queryTwo{}, &queryTwo{}, &queryTwo{}, &queryTwo{},
+		&queryThree{}, &queryThree{}, &queryThree{}, &queryThree{}, &queryThree{},
+		&queryFour{}, &queryFour{}, &queryFour{}, &queryFour{}, &queryFour{},
+		&queryFive{}, &queryFive{}, &queryFive{},
+		&querySix{}, &querySix{}, &querySix{},
+		&querySeven{}, &querySeven{},
+		&queryEight{}, &queryEight{}, &queryEight{}, &queryEight{},
 	}
 
 	dgclients := flag.Int("l", 6, "number of dgraph clients to run")
