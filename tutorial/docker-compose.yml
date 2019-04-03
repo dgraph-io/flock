@@ -1,0 +1,125 @@
+# Auto-generated with: [/home/javier/dgraph-io/dgraph/compose/compose -u -d /var/data/twitterer]
+#
+version: "3.5"
+services:
+  alpha1:
+    image: dgraph/dgraph
+    container_name: alpha1
+    working_dir: /working/alpha1
+    labels:
+      cluster: flock-cluster
+    ports:
+    - 8180:8180
+    - 9180:9180
+    volumes:
+    - type: bind
+      source: $DATA_DIR
+      target: /data
+      read_only: false
+    user: ${UID:-1000}
+    command: dgraph alpha -p /data/alpha1/p -w /data/alpha1/w -o 100 --my=alpha1:7180 --lru_mb=1024
+      --zero=zero1:5080 --logtostderr -v=2
+  alpha2:
+    image: dgraph/dgraph
+    container_name: alpha2
+    working_dir: /working/alpha2
+    depends_on:
+    - alpha1
+    labels:
+      cluster: flock-cluster
+    ports:
+    - 8182:8182
+    - 9182:9182
+    volumes:
+    - type: bind
+      source: $DATA_DIR
+      target: /data
+      read_only: false
+    user: ${UID:-1000}
+    command: dgraph alpha -p /data/alpha2/p -w /data/alpha2/w -o 102 --my=alpha2:7182 --lru_mb=1024
+      --zero=zero1:5080 --logtostderr -v=2
+  alpha3:
+    image: dgraph/dgraph
+    container_name: alpha3
+    working_dir: /working/alpha3
+    depends_on:
+    - alpha2
+    labels:
+      cluster: flock-cluster
+    ports:
+    - 8183:8183
+    - 9183:9183
+    volumes:
+    - type: bind
+      source: $DATA_DIR
+      target: /data
+      read_only: false
+    user: ${UID:-1000}
+    command: dgraph alpha -p /data/alpha3/p -w /data/alpha3/w -o 103 --my=alpha3:7183 --lru_mb=1024
+      --zero=zero1:5080 --logtostderr -v=2
+  zero1:
+    image: dgraph/dgraph
+    container_name: zero1
+    working_dir: /working/zero1
+    labels:
+      cluster: flock-cluster
+    ports:
+    - 5080:5080
+    - 6080:6080
+    volumes:
+    - type: bind
+      source: $DATA_DIR
+      target: /data
+      read_only: false
+    user: ${UID:-1000}
+    command: dgraph zero -w /data/zero1/zw -o 0 --idx=1 --my=zero1:5080 --replicas=3
+      --logtostderr -v=2 --bindall
+  zero2:
+    image: dgraph/dgraph
+    container_name: zero2
+    working_dir: /working/zero2
+    depends_on:
+    - zero1
+    labels:
+      cluster: flock-cluster
+    ports:
+    - 5082:5082
+    - 6082:6082
+    volumes:
+    - type: bind
+      source: $DATA_DIR
+      target: /data
+      read_only: false
+    user: ${UID:-1000}
+    command: dgraph zero -w /data/zero2/zw -o 2 --idx=2 --my=zero2:5082 --replicas=3
+      --logtostderr -v=2 --peer=zero1:5080
+  zero3:
+    image: dgraph/dgraph
+    container_name: zero3
+    working_dir: /working/zero3
+    depends_on:
+    - zero2
+    labels:
+      cluster: flock-cluster
+    ports:
+    - 5083:5083
+    - 6083:6083
+    volumes:
+    - type: bind
+      source: $DATA_DIR
+      target: /data
+      read_only: false
+    user: ${UID:-1000}
+    command: dgraph zero -w /data/zero3/zw -o 3 --idx=3 --my=zero3:5083 --replicas=3
+      --logtostderr -v=2 --peer=zero1:5080
+  ratel:
+    image: dgraph/dgraph
+    container_name: ratel
+    depends_on:
+      - alpha1
+    labels:
+      cluster: flock-cluster
+    ports:
+    - 8000:8000
+    command: dgraph-ratel
+volumes: {}
