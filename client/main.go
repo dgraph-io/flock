@@ -697,11 +697,8 @@ func (q *queryEight) runQuery(dgr *dgo.Dgraph) error {
 
 	query := fmt.Sprintf(`
 {
-  var(func: has(user_id)) @cascade {
-    a as count(~author)
-    ~author @filter(ge(created_at, "%v")) {
-      created_at
-    }
+  var(func: has(user_id)) {
+    a as count(~author) @filter(ge(created_at, "%v"))
   }
 
   dataquery(func: uid(a), orderdesc: val(a), first: 100, offset: %v) {
