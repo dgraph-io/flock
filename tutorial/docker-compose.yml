@@ -1,3 +1,5 @@
+# Auto-generated with: [/home/javier/dgraph-io/dgraph/compose/compose -u -d /var/data/twitterer]
+#
 version: "3.5"
 services:
   alpha1:
@@ -120,4 +122,16 @@ services:
     ports:
     - 8000:8000
     command: dgraph-ratel
+  flock:
+    build: ../
+    container_name: flock
+    volumes:
+      - ${PWD}/credentials.json:/app/credentials.json
+    depends_on:
+      - alpha1
+      - alpha2
+      - alpha3
+    labels:
+      cluster: flock-cluster
+    
 volumes: {}
