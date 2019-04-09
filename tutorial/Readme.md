@@ -52,6 +52,8 @@ One need to have a twitter developer account and an app to be able to fetch stre
 [./assets/twitter-keys.png]
 - Create a copy of the credentials template.
   ```sh
-  mv credentials-template.json credentials.json
+  mv credentials-template.json ./tutorials/credentials.json
   ```
-- Open the `crendentials.json` file and replace the placeholders with the keys from the twitter app's `Keys and token tab`.
+- Open the `tutorials/crendentials.json` file and replace the placeholders with the keys from the twitter app's `Keys and token tab`.
+
+---
