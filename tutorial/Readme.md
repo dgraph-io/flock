@@ -1,10 +1,10 @@
-# Flock
-Twitter on Dgraph. Pulls twitter data from its open API's and stores it into Dgraph.  
+## Flock
+Twitter on Dgraph. Pulls twitter data from its open APIs and stores it into Dgraph.  
 
-# Motivation
-The goal of the project is to build a interesting use case around Dgraph with a focus on developer experience. The docker-compose setup gets you up and running and flock let's you explore Dgraph's capabilities on the real twitter stream.
+## Motivation
+The goal of the project is to build an interesting use case around Dgraph with a focus on developer experience. The docker-compose setup gets you up and running and flock let's you explore Dgraph's capabilities on the real twitter stream.
 
-# Usage
+## Usage
 
 - Clone the repository.
 ```sh
@@ -12,7 +12,7 @@ $ git clone https://github.com/dgraph-io/flock.git
 $ cd flock/tutorial
 ```
 
-- Export the persistent data directory. Since Dgraph is run using Docker containers its essential to mount a directory on the host machine to persist the data across multiple runs.
+- Export the persistent data directory. Since Dgraph is run using Docker containers, it is essential to mount a directory on the host machine to persist the data across multiple runs.
 ```sh
 $ mkdir ./data
 $ export DATA_DIR=$(pwd)/data
@@ -23,7 +23,7 @@ $ export DATA_DIR=$(pwd)/data
 $ export UID
 ```
 
-- Finally, give permission to docker-compose to write to unix sockets inorder interact with docker-daemon.
+- This command adds the current user to docker group so that docker command line tool can write to unix socket where docker daemon is listening.
 ```
 $ sudo usermod -aG docker $USER
 ```
@@ -42,9 +42,9 @@ Graph databases store data by retaining its connected representation. This lets 
 
 ---
 
-# Obtaining twitter credentials
+## Obtaining twitter credentials
 
-One need to have a twitter developer account and an app to be able to fetch stream of tweets using their API's. Let's start with how to create a twitter developer account.
+One need to have a twitter developer account and an app to be able to fetch stream of tweets using their APIs. Let's start with how to create a twitter developer account.
 
 - Apply for a twitter developer account [here](https://developer.twitter.com/en/apply/user) and follow the instructions. The series of steps would end with your email verification.
 - Create a twitter app from [this link](https://developer.twitter.com/en/apps/create). All fields are not `required`.  
