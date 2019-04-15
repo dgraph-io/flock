@@ -701,7 +701,7 @@ func (q *queryEight) runQuery(dgr *dgo.Dgraph) error {
     a as count(~author) @filter(ge(created_at, "%v"))
   }
 
-  dataquery(func: uid(a), orderdesc: val(a), first: 100, offset: %v) {
+  dataquery(func: uid(a), orderdesc: val(a), first: 100, offset: %v) @cascade {
     uid
     screen_name
     user_id
