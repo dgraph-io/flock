@@ -17,6 +17,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -26,6 +27,7 @@ import (
 	"log"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -97,7 +99,7 @@ type twitterCreds struct {
 type progOptions struct {
 	NumClients       int
 	CredentialsFile  string
-	Timeout          time.Duration
+	DataFilesPath    string
 	ReportPeriodSecs int
 	NoCommitRatio    float64
 	AlphaSockAddr    []string
@@ -139,6 +141,10 @@ type twitterTweet struct {
 
 func runInserter(alphas []api.DgraphClient, c *y.Closer, tweets <-chan interface{}) {
 	defer c.Done()
+
+	if tweets == nil {
+		return
+	}
 
 	dgr := dgo.NewDgraphClient(alphas...)
 	for {
@@ -413,12 +419,13 @@ func newAPIClients(sockAddr []string) []api.DgraphClient {
 }
 
 // TODO: fix the race condition here
-func reportStats() {
+func reportStats(c *y.Closer) {
+	defer c.Done()
+
 	var oldStats, newStats progStats
 	log.Printf("Reporting stats every %v seconds\n", opts.ReportPeriodSecs)
 	for {
 		newStats = stats
-		time.Sleep(time.Second * time.Duration(opts.ReportPeriodSecs))
 		log.Printf("STATS tweets: %d, commits: %d, leaked: %d, json_errs: %d, "+
 			"retries: %d, failures: %d, dgraph_errs: %d, "+
 			"commit_rate: %d/sec\n",
@@ -426,13 +433,20 @@ func reportStats() {
 			newStats.Retries, newStats.Failures, newStats.ErrorsDgraph,
 			(newStats.Tweets-oldStats.Tweets)/uint32(opts.ReportPeriodSecs))
 		oldStats = newStats
+
+		select {
+		case <-c.HasBeenClosed():
+			return
+		default:
+			time.Sleep(time.Second * time.Duration(opts.ReportPeriodSecs))
+		}
 	}
 }
 
 func checkFatal(err error, format string, args ...interface{}) {
 	if err != nil {
 		msg := fmt.Sprintf(format, args...)
-		_, _ = fmt.Fprintf(os.Stderr, "%s: %s\n", msg, err)
+		_, _ = fmt.Fprintf(os.Stderr, "%s :: %s\n", msg, err)
 		os.Exit(1)
 	}
 }
@@ -440,7 +454,7 @@ func checkFatal(err error, format string, args ...interface{}) {
 func main() {
 	dgclients := flag.Int("l", 8, "number of dgraph clients to run")
 	credentialsFile := flag.String("c", "credentials.json", "path to credentials file")
-	programDuration := flag.Int64("t", 3600, "duration in seconds for program")
+	dataFilesPath := flag.String("d", "", "path containing json files with tweets in each line")
 	noCommitRatio := flag.Float64("p", 0, "prob of CommitNow=False, from 0.0 to 1.0")
 	alphasAddress := flag.String("a", ":9180,:9182,:9183", "comma separated addresses to alphas")
 	flag.Parse()
@@ -451,14 +465,12 @@ func main() {
 	opts = progOptions{
 		NumClients:       *dgclients,
 		CredentialsFile:  *credentialsFile,
-		Timeout:          time.Duration(*programDuration) * time.Second,
+		DataFilesPath:    *dataFilesPath,
 		ReportPeriodSecs: 2,
 		NoCommitRatio:    *noCommitRatio,
 		AlphaSockAddr:    strings.Split(*alphasAddress, ","),
 	}
 
-	creds := readCredentials(opts.CredentialsFile)
-	client := newTwitterClient(creds)
 	alphas := newAPIClients(opts.AlphaSockAddr)
 
 	// setup schema
@@ -470,34 +482,88 @@ func main() {
 	checkFatal(err, "error in creating indexes")
 
 	// report stats
-	go reportStats()
+	r := y.NewCloser(1)
+	go reportStats(r)
 	log.Printf("Using %v dgraph clients on %v alphas\n",
 		opts.NumClients, len(opts.AlphaSockAddr))
 
-	// read twitter stream
-	for {
-		// choose top 20 trending keywords
-		log.Println("Getting trends...")
-		trends, err := getTrends(1, client)
-		if len(trends) > 20 {
-			trends = trends[:20]
-		}
-		checkFatal(err, "error in getting trends")
-
-		// stream := client.PublicStreamFilter(map[string][]string{"track": allKwds})
+	var tweetChannel chan interface{}
+	if opts.DataFilesPath == "" {
+		creds := readCredentials(opts.CredentialsFile)
+		client := newTwitterClient(creds)
 		stream := client.PublicStreamSample(nil)
-		log.Printf("Updating keywords to: %s\n", strings.Join(trends, ", "))
+		tweetChannel = stream.C
+		defer stream.Stop()
+	} else {
+		tweetChannel = setupChannelFromDir(opts.DataFilesPath)
+	}
 
-		c := y.NewCloser(0)
-		for i := 0; i < opts.NumClients; i++ {
-			c.AddRunning(1)
-			go runInserter(alphas, c, stream.C)
+	// read twitter stream
+	c := y.NewCloser(0)
+	for i := 0; i < opts.NumClients; i++ {
+		c.AddRunning(1)
+		go runInserter(alphas, c, tweetChannel)
+	}
+
+	c.Wait()
+	r.SignalAndWait()
+	log.Println("Stopping stream...")
+}
+
+func setupChannelFromDir(dataPath string) chan interface{} {
+	info, err := os.Stat(dataPath)
+	checkFatal(err, "error in opening path to json files")
+
+	var files []string
+	switch {
+	case info.IsDir():
+		// handle directory case
+		err := filepath.Walk(dataPath, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+
+			if info.IsDir() {
+				return nil
+			}
+
+			files = append(files, path)
+			return nil
+		})
+
+		checkFatal(err, "error in walking input data directory")
+	default:
+		// handle single file
+		files = append(files, dataPath)
+	}
+
+	dataChan := make(chan interface{})
+	go func() {
+		for _, dataFile := range files {
+			log.Println("reading file:", dataFile)
+
+			fd, err := os.Open(dataFile)
+			if err != nil {
+				checkFatal(err, "error in opening file: %v", dataFile)
+			}
+
+			scanner := bufio.NewScanner(fd)
+			for scanner.Scan() {
+				var t anaconda.Tweet
+				if err := json.Unmarshal(scanner.Bytes(), &t); err != nil {
+					atomic.AddUint32(&stats.ErrorsJSON, 1)
+					continue
+				}
+
+				dataChan <- t
+			}
+
+			checkFatal(scanner.Err(), "error in scanning file: %v", dataFile)
+			fd.Close()
 		}
 
-		time.Sleep(opts.Timeout)
-		log.Println("Stopping stream...")
-		stream.Stop()
-		c.SignalAndWait()
-		log.Println("Stream stopped.")
-	}
+		close(dataChan)
+	}()
+
+	return dataChan
 }
