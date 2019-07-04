@@ -121,12 +121,16 @@ services:
   flock:
     build: ../
     container_name: flock
+    restart: always
     volumes:
       - ./credentials.json:/app/credentials.json
     depends_on:
       - alpha1
       - alpha2
       - alpha3
+      - zero1
+      - zero2
+      - zero3
     labels:
       cluster: flock-cluster
 
