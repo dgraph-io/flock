@@ -51,6 +51,7 @@ $ export UID
 ```
 
 - This command adds the current user to docker group so that docker command line tool can write to unix socket where docker daemon is listening.
+  You should logout and login the host again, after called the command.
 ```
 $ sudo usermod -aG docker $USER
 ```
