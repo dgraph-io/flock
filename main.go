@@ -322,6 +322,7 @@ func updateFilteredTweet(ft *twitterTweet, txn *dgo.Txn) error {
 		} else if u != nil {
 			ft.Mention[i] = *u
 		}
+		userMentions = append(userMentions, ft.Mention[i])
 		users[userID] = m.UID
 	}
 	ft.Mention = userMentions
@@ -478,8 +479,21 @@ func main() {
 	op := &api.Operation{
 		Schema: cDgraphSchema,
 	}
-	err := dgr.Alter(context.Background(), op)
-	checkFatal(err, "error in creating indexes")
+	retryCount := 0
+	for {
+		err := dgr.Alter(context.Background(), op)
+		if err == nil {
+			break
+		}
+
+		retryCount++
+		if retryCount == 3 {
+			checkFatal(err, "error in creating indexes")
+		}
+
+		log.Println("sleeping for 1 sec, alter failed")
+		time.Sleep(1 * time.Second)
+	}
 
 	// report stats
 	r := y.NewCloser(1)
