@@ -270,7 +270,7 @@ query all($screenName: string) {
 			return errInvalidResponse
 		}
 
-		if t.UID == "" || t.UserID == "" || t.ImageURL == "" {
+		if t.UID == "" || t.UserID == "" {
 			log.Printf("response is empty :: %+v", t)
 			return errInvalidResponse
 		}
@@ -345,7 +345,7 @@ func (q *queryThree) runQuery(dgr *dgo.Dgraph) error {
 			log.Printf("the mentions are not sorted, resp: %v", t)
 		}
 
-		if t.UID == "" || t.UserID == "" || t.ImageURL == "" {
+		if t.UID == "" || t.UserID == "" {
 			log.Printf("response is empty :: %+v", t)
 			return errInvalidResponse
 		}
@@ -418,7 +418,7 @@ func (q *queryFour) runQuery(dgr *dgo.Dgraph) error {
 			log.Printf("the users are not sorted, resp: %v", t)
 		}
 
-		if t.UID == "" || t.UserID == "" || t.ImageURL == "" {
+		if t.UID == "" || t.UserID == "" {
 			log.Printf("response is empty :: %+v", t)
 			return errInvalidResponse
 		}
@@ -531,7 +531,7 @@ query all($userID: string) {
 			return errInvalidResponse
 		}
 
-		if t.UID == "" || t.ScreenName == "" || t.ImageURL == "" {
+		if t.UID == "" || t.ScreenName == "" {
 			log.Printf("response is empty :: %+v", t)
 			return errInvalidResponse
 		}
@@ -771,7 +771,7 @@ func (q *queryEight) runQuery(dgr *dgo.Dgraph) error {
 			log.Printf("the users are not sorted, resp: %v", t)
 		}
 
-		if t.UID == "" || t.UserID == "" || t.ImageURL == "" {
+		if t.UID == "" || t.UserID == "" {
 			log.Printf("response is empty :: %+v", t)
 			return errInvalidResponse
 		}
