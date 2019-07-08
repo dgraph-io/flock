@@ -10,12 +10,10 @@ capabilities on the real twitter stream.
 - [Obtaining the twitter credentials](#Obtaining-twitter-credentials)
 - [Running Flock](#Setup)
 - [Welcome to Dgraph](#Welcome-to-Dgraph)
-- [Terminologies](#Terminologies)
-- [Introduction to Ratel](#Introduction-to-Ratel)
-- [Data Modeling](#Twitter-data-Modeling)
-- [Queries](#queries)
-- [Creating indexes](#Creating-indexes)
-- [Using client libraries](#Client-libraries)
+- [Introduction to Ratel](#introduction-to-ratel)
+- [Twitter Data](#twitter-data)
+- [Data Modeling](#data-modeling)
+- [Upsert-directive](#upsert-directive)
 ---
 
 ## Obtaining twitter credentials
@@ -38,6 +36,7 @@ their APIs. Let's start with how to create a twitter developer account.
   twitter app's `Keys and token tab`.
 
 ---
+
 ## Setup
 
 - Clone the repository.
@@ -53,7 +52,7 @@ $ mkdir ./data
 $ export DATA_DIR=$(pwd)/data
 ```
 
-- Export UID. This is to give permissions to Dgraph process inside the container to write to host directory.   
+- Export UID. This is to give permission to Dgraph process inside the container to write to host directory.   
 ```sh
 $ export UID
 ```
@@ -70,30 +69,23 @@ $ sudo usermod -aG docker $USER
 ```sh
 $ docker-compose up
 ```
+
 ---
 
 ## Welcome to Dgraph.
 The docker compose setup runs Dgraph servers and fetches the data from twitter stream and stores 
-them in Dgraph. Here's where you'll see that modeling your data with a GraphDB differs from 
-SQl and NO-SQL databases, welcome to relationship first approach with Dgraph! Using Flock, 
-here's how the data from the twitter stream is modeled.
+it in Dgraph. 
 
-**TODO: Illustration required to showcase the Model of twitter stream in Dgraph.**  
 
 Graph databases store data by retaining its connected representation. This lets you discover 
-connections and relationships which are not possible with SQL or NO-SQL databases. Imagining and 
+connections through relationships which are not possible with SQL or NO-SQL databases. Imagining and 
 modeling the real world data in its natural connected form is more intuitive than trying hard to 
 squeeze it in a tabular format as rows and tables. The denormalized modeling of NO-SQL databases 
-are even less effective than SQL. These inherent capabilities of a GraphDB combined with ease of 
+are even less effective than SQL when it comes to managing connected data. 
+These inherent capabilities of a GraphDB combined with ease of 
 use, performance and scalability of Dgraph let's you model easily, develop applications faster and 
-discover relationships which could empower one to have feature sets which were not possible before 
+discover relationships which could empower one to have feature sets which were previously not possible 
 in real time.
-
----
-## Terminologies
-- Predicates
-- Mutation
-- Facets
 
 ---
 
@@ -103,86 +95,127 @@ Ratel is the user interface to run queries and mutations on Dgraph.
 
 ---
 
-## Twitter data Modeling
-Flock pulls the tweets from the stream and organizes the fields. There are essentially two types of
- nodes. User and Tweet nodes. Here are predicates/properties in the Twitter User node.
+## Twitter data 
+Flock pulls the tweets from the twitter stream using their developer API's and 
+organizes the data based on the schema. We'll see about creating schema in the next section. 
 
-```go
-twitterUser{
-  UID              string
-  UserID           string
-  UserName         string
-  ScreenName       string  
-  Description      string
-  FriendsCount     int    
-  Verified         bool   
-  ProfileBannerURL string
-  ProfileImageURL  string
-}   
+Let's pull few tweets using the twitter API and see the available fields/properties, later we could
+evaluate these fields and create a Dgraph schema. 
+
+Here is the NodeJS code to pull tweets using the twitter API's
+
+```node
+
+TODO: Code should go here
+
 ```
 
-Here are predicates/properties in the Tweet node.
-```go
-{
-  UID       string        
-  IDStr     string        
+TODO: @Prashant - Please complete the code to pull few tweets from the twitter API's and print them. 
+---
+
+## Data Modeling 
+If you observe the information in the tweets there are two different types of objects. One is the
+`User` and the other is a `Tweet`. 
+
+In Dgraph, an object would be represented as a `Node`. Hence every `User` and each `Tweet` would be stored as 
+a node in Dgraph. The relationship between the nodes will be represented as an edge between them.  
+
+Here are the relationships between the nodes which we could represent as nodes, 
+
+- A Tweet belongs to a user. This is a relationship between a `Tweet` and an `User`. We could use 
+  an `Author` edge from a `Tweet` node to an `User` node to represent the relationships between these two.
+- A `User` can be mentioned in a tweet. We could use a `Mention` edge from a `Tweet` node to an `User`
+  node to represent this relationship.
+
+These connections/relationships are between the Nodes are modelled as edges. 
+
+Now we understand the fields available in these tweets. We also have an idea about the type of Nodes
+and edges we need to create, 
+
+Let's organize the available fields in the tweets obtained from the twitter API's and assign them as 
+fields/properties of either the `User` node and the `Tweet` node. 
+As discussed in the getting started guide, the first step would be to get the white paper model of
+the application graph.  
+
+TODO: Need schema diagram of the Graph model.
+
+From the white paper model here are the properties of the `User` node with thier types.  
+```sh
+uid string
+user_id string
+user_name string
+screen_name string
+description string
+friends_count int
+verified bool
+profile_banner_url string 
+profile_image_url string
+```
+
+Every property of the node will be identified as a predicate in Dgraph. You could visualize
+a node to have a unique identifier (uid) assigned by Dgraph, with all its properties (user_name,
+screen_name, description, friends_count,....) connected as the predicates/edge to it. Using the uid
+of the node one could query or mutate the predicates associated with it. 
+
+To start with if you have an idea about the different queries you would be running in the application,
+ it could be used as a reference to create indexes in the schema. 
+
+For example, if you would like to have feature/query like "Search for user based on their twitter handle", 
+then an index has to be created for `user_name` field for improving the performance of that query. 
+
+But if you are not planning to find users based on their friends count, there is no need to create
+an index on the `friends_count` field. 
+
+In practice, unless there's a need to have an index on a predicate/property of a node, there is no
+need to have that field as part of the schema. 
+
+Note: Refer to the getting started guide to understanding the basics of creating schema in Dgraph.
+
+There is no need to anticipate all the queries and derive the required indices upfront, 
+Dgraph's flexible schema allows modification of the schema and indices at any later point in time. 
+This change in schema can be done either from Ratel's interface (As shown in the getting started guide)
+or using any client libraries.
+
+
+Here are predicates/properties in the Tweet node with their types. This tweet data is obtained using 
+the Twitter developer API's. 
+
+```sh
+  # Node ID assigned by Dgraph
+  uid string        
+  # ID of the tweet returned by twitter. 
+  id_str string       
+  # Creation time of tweet as returned by twitter API. 
   CreatedAt string       
+  # Message of tweet.
   Message   string        
   URLs      []string      
   HashTags  []string  
-
   Retweet   bool
-}         
-
-```
-Here's twitter data is modeled in Dgraph.
-- `Author` edge is drawn from a tweet node to a `twitter user node` everytime a user tweets.
-- `Mention` also is a edge which connects a `tweet node` to an `user node` everytime there's a 
-   mention in the tweet.
-
-```go
-{
-  UID       string        
-  IDStr     string        
-  CreatedAt string       
-  Message   string        
-  URLs      []string      
-  HashTags  []string  
-  # Author is an edge from tweet to the twitterUser node .    
-  Author    twitterUser{
-    UID              string
-    UserID           string
-    UserName         string
-    ScreenName       string
-    Description      string
-    FriendsCount     int    
-    Verified         bool   
-    ProfileBannerURL string
-    ProfileImageURL  string
-  }   
-  # Mention in an edge from tweet to twitter user node.
-  Mention   twitterUser{
-    UID              string
-    UserID           string
-    UserName         string
-    ScreenName       string
-    Description      string
-    FriendsCount     int    
-    Verified         bool   
-    ProfileBannerURL string
-    ProfileImageURL  string
-  }
-  Retweet   bool
-}         
 ```
 
+In the white paper model we see two different edges between the nodes. 
+
+- `Author` edge from a `Tweet` to an `User` node. A User can have multiple tweets, but a tweet 
+  belongs only to one User. This means there could be only one `Author` edge emerging out a `Tweet`, 
+  but a `User` node could possibly have multiple `Tweets` pointing into it.  
+
+- `Mention` edge from a `Tweet` to a `User`. Whenever an `User` is mentioned in a `Tweet`, `Mention`
+  edge points from the `Tweet` to its `User`.  
+
 ---
 
-## Creating indexes
+Now we know the fields/properties of the nodes and the edges too. Let's look at how to create an 
+`User` node and a `Author` node and create the edges between them.
 
+TODO: @Prashant, please add a code which pulls a tweet and creates the graph.
 
+---  
+
+# Upsert directive
+TODO: @Karthic content, @prashath - Example schema with `email string @upsert` with nodeJS code. 
+
+ 
 ---
-## Client libraries
 
 
----
