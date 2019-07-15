@@ -4,7 +4,7 @@ Flock is twitter Graph model built on Dgraph.
 
 Flock has two parts, 
 - [*Mutation program*](./main.go) - Makes use of the tweets available from twitter developer API's and 
-builds the Graph model on top of Dgraph. Here is the Graph schema of Flock
+builds the Graph model on top of Dgraph. 
 
 Here is the Graph schema of Flock, 
 
