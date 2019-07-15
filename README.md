@@ -3,7 +3,8 @@
 Flock is twitter Graph model built on Dgraph. 
 
 Flock has two parts, 
-- [*Mutation program*](./main.go) - Makes use of the tweets available from twitter developer API's and builds the Graph model on top of Dgraph. Here is the Graph schema of Flock
+- [*Mutation program*](./main.go) - Makes use of the tweets available from twitter developer API's and 
+builds the Graph model on top of Dgraph. Here is the Graph schema of Flock
 
 Here is the Graph schema of Flock, 
 
@@ -22,7 +23,7 @@ their APIs. Let's start with how to create a twitter developer account.
   follow the instructions. The series of steps would end with your email verification.
 - Create a twitter app from [this link](https://developer.twitter.com/en/apps/create). 
   All fields are `not` required.  
-- You'll be redirected to the App details tab after creating the app. Go the `Keys and tokens` tab
+- You'll be redirected to the App details tab after creating the app. Go to the `Keys and tokens` tab
    and create new access and secret tokens.
 ![Twitter Developer account](./twitter-keys.png)
 - Create a copy of the credentials template.
