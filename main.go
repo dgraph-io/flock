@@ -26,8 +26,10 @@ import (
 	"io/ioutil"
 	"log"
 	"math/rand"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -42,19 +44,6 @@ import (
 const (
 	cTimeFormat       = "Mon Jan 02 15:04:05 -0700 2006"
 	cDgraphTimeFormat = "2006-01-02T15:04:05.999999999+10:00"
-
-	cDgraphSchema = `
-user_id: string @index(exact) @upsert .
-user_name: string @index(hash) .
-screen_name: string @index(term) .
-
-id_str: string @index(exact) @upsert .
-created_at: dateTime @index(hour) .
-hashtags: [string] @index(exact) .
-
-author: uid @count @reverse .
-mention: [uid] @reverse .
-`
 
 	cDgraphTweetQuery = `
 query all($tweetID: string) {
@@ -452,6 +441,60 @@ func checkFatal(err error, format string, args ...interface{}) {
 	}
 }
 
+func getSchema() string {
+	var schema string
+	schema += fmt.Sprintf("user_id: string @index(exact) @upsert .\n")
+	schema += fmt.Sprintf("user_name: string @index(hash) .\n")
+	schema += fmt.Sprintf("screen_name: string @index(term) .\n")
+
+	schema += fmt.Sprintf("id_str: string @index(exact) @upsert .\n")
+	schema += fmt.Sprintf("created_at: dateTime @index(hour) .\n")
+	schema += fmt.Sprintf("hashtags: [string] @index(exact) .\n")
+
+	schema += fmt.Sprintf("author: uid @count @reverse .\n")
+	switch dgraphVersion() {
+	case "v1.0":
+		schema += fmt.Sprintf("mention: uid @reverse .\n")
+	case "v1.1":
+		schema += fmt.Sprintf("mention: [uid] @reverse .\n")
+	default:
+		log.Fatalf("cannot generate schema for unknown dgraph version")
+	}
+
+	return schema
+}
+
+func dgraphVersion() string {
+	grpcAddr := strings.Split(opts.AlphaSockAddr[0], ":")
+	hostname := grpcAddr[0]
+	port, err := strconv.Atoi(grpcAddr[1])
+	checkFatal(err, "error getting Dgraph HTTP port")
+
+	alphaHttpAddr := fmt.Sprintf("http://%s:%d", hostname, port-1000)
+	url := fmt.Sprintf("%s/health", alphaHttpAddr)
+	resp, err := http.Get(url)
+	checkFatal(err, "error with health check")
+
+	defer resp.Body.Close()
+	data, err := ioutil.ReadAll(resp.Body)
+	checkFatal(err, "error while getting health check response")
+
+	if string(data) == "OK" {
+		return "v1.0"
+	}
+
+	var info struct {
+		Version  string        `json:"version"`
+		Instance string        `json:"instance"`
+		Uptime   time.Duration `json:"uptime"`
+	}
+	if err := json.Unmarshal(data, &info); err == nil {
+		return "v1.1"
+	}
+
+	return "unknown"
+}
+
 func main() {
 	dgclients := flag.Int("l", 8, "number of dgraph clients to run")
 	credentialsFile := flag.String("c", "credentials.json", "path to credentials file")
@@ -477,7 +520,7 @@ func main() {
 	// setup schema
 	dgr := dgo.NewDgraphClient(alphas...)
 	op := &api.Operation{
-		Schema: cDgraphSchema,
+		Schema: getSchema(),
 	}
 	retryCount := 0
 	for {
