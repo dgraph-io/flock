@@ -52,7 +52,7 @@ id_str: string @index(exact) @upsert .
 created_at: dateTime @index(hour) .
 hashtags: [string] @index(exact) .
 
-author: [uid] @count @reverse .
+author: uid @count @reverse .
 mention: [uid] @reverse .
 `
 
