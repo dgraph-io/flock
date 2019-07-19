@@ -119,7 +119,7 @@ services:
     - 8000:8000
     command: dgraph-ratel
   flock:
-    build: ../
+    build: ./
     container_name: flock
     restart: always
     volumes:
