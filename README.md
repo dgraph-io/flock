@@ -49,17 +49,22 @@ $ mkdir ./data
 $ export DATA_DIR=$(pwd)/data
 ```
 
-- Export UID. This is to give permission to Dgraph process inside the container to write to host directory.   
+- Export UID. This is to give permission to Dgraph process inside the container to write to host directory. 
+
 ```sh
 $ export UID
 ```
 
 - This command adds the current user to docker group so that docker command line tool can write to 
-  unix socket where docker daemon is listening.
-  You should logout and login the host again, after executing the command.
+  unix socket where docker daemon is listening. 
+  `newgrp` creates a new terminal session. It is necessary after the user addition.
+
 ```
 $ sudo usermod -aG docker $USER
+$ newgrp docker
 ```
+
+- Ensure that `credentials.json` with the twitter credentials exist in the root directory of flock. 
 
 - Start the Dgraph servers, flock and Ratel with Docker-compose. Visit http://localhost:8000 on your 
   browser to view the UI.
