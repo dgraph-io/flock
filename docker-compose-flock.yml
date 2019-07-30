@@ -1,0 +1,12 @@
+version: "3.5"
+services:
+  flock:
+    build: ./
+    container_name: flock
+    restart: always
+    volumes:
+      - ./credentials.json:/app/credentials.json
+    network_mode: "host"
+    labels:
+      cluster: flock-cluster
+    command: ["-c", "/app/credentials.json", "-a", "localhost:9080"]
