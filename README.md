@@ -4,7 +4,7 @@ Flock loads real Twitter streams into Dgraph to make use of graph travesals.
 
 Flock has two parts, 
 - [*Tweet loader*](./main.go) - Connects to [realtime Tweets][tweetsapi] via the Twitter Developer API and
-loads a graph model of Twitter into Dgraph viam utations.
+loads a graph model of Twitter into Dgraph via mutations.
 - [*Query client*](./client/main.go) - Runs interesting graph queries on the Tweets data stored in Dgraph.
 
 Here is the graph schema of Flock:
