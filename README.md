@@ -3,20 +3,21 @@
 Flock loads real Twitter streams into Dgraph to make use of graph travesals.
 
 Flock has two parts, 
-- [*Mutation program*](./main.go) - Makes use of the tweets available from Twitter's Developer API and 
-builds the graph model on top of Dgraph.
+- [*Tweet loader*](./main.go) - Connects to [realtime Tweets][tweetsapi] via the Twitter Developer API and
+loads a graph model of Twitter into Dgraph viam utations.
+- [*Query client*](./client/main.go) - Runs interesting graph queries on the Tweets data stored in Dgraph.
 
 Here is the graph schema of Flock:
 
 ![Schema](./schema.JPG)
 
-- [*Query client*](./client/main.go) - Runs interesting graph queries on the tweets data stored in Dgraph. 
-  
+[tweetsapi]: https://developer.twitter.com/en/docs/tweets/sample-realtime/overview/GET_statuse_sample
+
 # Running Flock
 
 ## Obtaining Twitter credentials
 
-We need to create a Twitter developer account and an app to be able to fetch stream of tweets using 
+We need to create a Twitter developer account and an app to be able to fetch stream of Tweets using 
 their APIs. Let's start with how to create a Twitter developer account.
 
 - Apply for a Twitter developer account [here](https://developer.twitter.com/en/apply/user) and 
@@ -49,7 +50,7 @@ $ mkdir ./data
 $ export DATA_DIR=$(pwd)/data
 ```
 
-- If you're running Linux, you can add the current user to docker group to use Docker as a non-root user.
+- If you're running Linux, you can add the current user to the `docker` group to use Docker as a non-root user.
   `newgrp` creates a new terminal session. It is necessary after the user modification to see the effects.
 
 ```
