@@ -46,8 +46,10 @@ const (
 	cDgraphTimeFormat = "2006-01-02T15:04:05.999999999+10:00"
 
 	cDgraphUserQuery = `
-query all($userID: string) {
-	v as var(func: eq(user_id, $userID))
+query all($tweetID: string, $userID: string) {
+	t as var(func: eq(id_str, $tweetID))
+	u as var(func: eq(user_id, $userID))
+
 }
 `
 )
@@ -110,6 +112,43 @@ type twitterTweet struct {
 	Retweet   bool          `json:"retweet"`
 }
 
+func createQuery(tweet *twitterTweet) string {
+	usersMap := make(map[string]string)
+
+	tweetQuery := `t as var(func: eq(id_str, "%s"))`
+	userQuery := `%s as var(func: eq(user_id, "%s"))`
+
+	query := make([]string, len(tweet.Mention)+2)
+
+	query[0] = fmt.Sprintf(tweetQuery, tweet.IDStr)
+	tweet.UID = "uid(t)"
+
+	query[1] = fmt.Sprintf(userQuery, "u", tweet.Author.UserID)
+	tweet.Author.UID = "uid(u)"
+	usersMap[tweet.Author.UserID] = "u"
+
+	for i, user := range tweet.Mention {
+		var varName string
+		if name, ok := usersMap[user.UserID]; ok {
+			varName = name
+		} else {
+			varName = fmt.Sprintf("m%d", i+1)
+			query[i+2] = fmt.Sprintf("%s as var(func: eq(user_id, %s))", varName, user.UserID)
+			usersMap[user.UserID] = varName
+		}
+
+		tweet.Mention[i].UID = fmt.Sprintf("uid(%s)", varName)
+	}
+
+	finalQuery := fmt.Sprintf(`
+query {
+%s
+}
+`, strings.Join(query, "\n"))
+
+	return finalQuery
+}
+
 func runInserter(alphas []api.DgraphClient, c *y.Closer, tweets <-chan interface{}) {
 	defer c.Done()
 
@@ -141,7 +180,7 @@ func runInserter(alphas []api.DgraphClient, c *y.Closer, tweets <-chan interface
 			// txn is not being discarded deliberately
 			// defer txn.Discard()
 
-			updateFilteredTweet(ft, txn)
+			queryStr := createQuery(ft)
 
 			tweet, err := json.Marshal(ft)
 			if err != nil {
@@ -165,7 +204,7 @@ func runInserter(alphas []api.DgraphClient, c *y.Closer, tweets <-chan interface
 					},
 				},
 				CommitNow: commitNow,
-				Query:     cDgraphUserQuery,
+				Query:     queryStr,
 				Vars:      queryVars,
 			}
 			_, err = txn.Do(context.Background(), apiUpsert)
@@ -249,25 +288,6 @@ func filterTweet(jsn interface{}) (*twitterTweet, error) {
 		Mention: userMentions,
 		Retweet: tweet.Retweeted,
 	}, nil
-}
-
-func updateFilteredTweet(ft *twitterTweet, txn *dgo.Txn) {
-
-	// map to check for duplicates
-	users := make(map[string]string)
-
-	userID := ft.Author.UserID
-	users[userID] = ft.Author.UID
-
-	userMentions := make([]twitterUser, 0)
-	for _, m := range ft.Mention {
-		if dup, ok := users[m.UserID]; ok && dup != "" {
-			userMentions = append(userMentions, twitterUser{UID: dup})
-			users[m.UserID] = m.UID
-		}
-	}
-	ft.Mention = userMentions
-	ft.UID = "uid(v)"
 }
 
 func readCredentials(path string) twitterCreds {
