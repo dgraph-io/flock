@@ -45,27 +45,22 @@ const (
 	cTimeFormat       = "Mon Jan 02 15:04:05 -0700 2006"
 	cDgraphTimeFormat = "2006-01-02T15:04:05.999999999+10:00"
 
-	cDgraphTweetQuery = `
-query all($tweetID: string) {
-	all(func: eq(id_str, $tweetID)) {
-		uid
-	}
-}
+	cDgraphSchema = `
+user_id: string @index(exact) @upsert .
+user_name: string @index(hash) .
+screen_name: string @index(term) .
+
+id_str: string @index(exact) @upsert .
+created_at: dateTime @index(hour) .
+hashtags: [string] @index(exact) .
+
+author: uid @count @reverse .
+mention: uid @reverse .
 `
 
 	cDgraphUserQuery = `
 query all($userID: string) {
-	all(func: eq(user_id, $userID)) {
-		uid
-		user_id
-		user_name
-		screen_name
-		description
-		friends_count
-		verified
-		profile_banner_url
-		profile_image_url
-	}
+	v as var(func: eq(user_id, $userID))
 }
 `
 )
@@ -159,10 +154,7 @@ func runInserter(alphas []api.DgraphClient, c *y.Closer, tweets <-chan interface
 			// txn is not being discarded deliberately
 			// defer txn.Discard()
 
-			if errTweet := updateFilteredTweet(ft, txn); errTweet != nil {
-				atomic.AddUint32(&stats.ErrorsDgraph, 1)
-				continue
-			}
+			updateFilteredTweet(ft, txn)
 
 			tweet, err := json.Marshal(ft)
 			if err != nil {
@@ -178,8 +170,18 @@ func runInserter(alphas []api.DgraphClient, c *y.Closer, tweets <-chan interface
 			// only ONE retry attempt is made
 			retry := true
 		RETRY:
-			apiMutation := &api.Mutation{SetJson: tweet, CommitNow: commitNow}
-			_, err = txn.Mutate(context.Background(), apiMutation)
+			queryVars := map[string]string{"userID": ft.Author.UserID}
+			apiUpsert := &api.Request{
+				Mutations: []*api.Mutation{
+					&api.Mutation{
+						SetJson: tweet,
+					},
+				},
+				CommitNow: commitNow,
+				Query:     cDgraphUserQuery,
+				Vars:      queryVars,
+			}
+			_, err = txn.Do(context.Background(), apiUpsert)
 			switch {
 			case err == nil:
 				if commitNow {
@@ -262,112 +264,23 @@ func filterTweet(jsn interface{}) (*twitterTweet, error) {
 	}, nil
 }
 
-func updateFilteredTweet(ft *twitterTweet, txn *dgo.Txn) error {
-	// first ensure that tweet doesn't exists
-	resp, err := txn.QueryWithVars(context.Background(), cDgraphTweetQuery,
-		map[string]string{"$tweetID": ft.IDStr})
-	if err != nil {
-		return err
-	}
-	var r struct {
-		All []struct {
-			UID string `json:"uid"`
-		} `json:"all"`
-	}
-	if err := json.Unmarshal(resp.Json, &r); err != nil {
-		return err
-	}
-
-	// possible duplicate, shouldn't happen
-	if len(r.All) > 0 {
-		log.Println("found duplicate tweet with id:", ft.IDStr)
-		return errShouldNotReach
-	}
+func updateFilteredTweet(ft *twitterTweet, txn *dgo.Txn) {
 
 	// map to check for duplicates
 	users := make(map[string]string)
 
 	userID := ft.Author.UserID
-	if u, err := queryUser(txn, &ft.Author); err != nil {
-		return err
-	} else if u != nil {
-		ft.Author = *u
-	}
 	users[userID] = ft.Author.UID
 
 	userMentions := make([]twitterUser, 0)
-	for i, m := range ft.Mention {
+	for _, m := range ft.Mention {
 		if dup, ok := users[m.UserID]; ok && dup != "" {
 			userMentions = append(userMentions, twitterUser{UID: dup})
-			continue
-		} else if ok && dup == "" {
-			// TODO: find a way to not ignore this mention
-			continue
+			users[m.UserID] = m.UID
 		}
-
-		userID := m.UserID
-		if u, err := queryUser(txn, &m); err != nil {
-			return err
-		} else if u != nil {
-			ft.Mention[i] = *u
-		}
-		userMentions = append(userMentions, ft.Mention[i])
-		users[userID] = m.UID
 	}
 	ft.Mention = userMentions
-
-	return nil
-}
-
-func equalsUser(src, dst *twitterUser) bool {
-	return src.UserID == dst.UserID &&
-		src.UserName == dst.UserName &&
-		src.ScreenName == dst.ScreenName &&
-		src.Description == dst.Description &&
-		src.FriendsCount == dst.FriendsCount &&
-		src.Verified == dst.Verified &&
-		src.ProfileBannerURL == dst.ProfileBannerURL &&
-		src.ProfileImageURL == dst.ProfileImageURL
-}
-
-func queryUser(txn *dgo.Txn, src *twitterUser) (*twitterUser, error) {
-	resp, err := txn.QueryWithVars(context.Background(), cDgraphUserQuery,
-		map[string]string{"$userID": src.UserID})
-	if err != nil {
-		return nil, err
-	}
-
-	var r struct {
-		All []twitterUser `json:"all"`
-	}
-	if err := json.Unmarshal(resp.Json, &r); err != nil {
-		return nil, err
-	}
-
-	if len(r.All) > 1 {
-		log.Println("found duplicate users in Dgraph with id:", r.All[0].UserID)
-		return nil, errShouldNotReach
-	} else if len(r.All) == 0 {
-		return nil, nil
-	} else if len(r.All) == 1 && !equalsUser(src, &r.All[0]) {
-		return &r.All[0], nil
-	} else {
-		return &twitterUser{UID: r.All[0].UID}, nil
-	}
-}
-
-func getTrends(id int64, api *anaconda.TwitterApi) ([]string, error) {
-	resp, err := api.GetTrendsByPlace(id, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	trends := make([]string, len(resp.Trends))
-	for i, t := range resp.Trends {
-		trends[i] = t.Name
-	}
-
-	return trends, nil
+	ft.UID = "uid(v)"
 }
 
 func readCredentials(path string) twitterCreds {
