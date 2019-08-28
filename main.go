@@ -44,14 +44,6 @@ import (
 const (
 	cTimeFormat       = "Mon Jan 02 15:04:05 -0700 2006"
 	cDgraphTimeFormat = "2006-01-02T15:04:05.999999999+10:00"
-
-	cDgraphUserQuery = `
-query all($tweetID: string, $userID: string) {
-	t as var(func: eq(id_str, $tweetID))
-	u as var(func: eq(user_id, $userID))
-
-}
-`
 )
 
 var (
@@ -112,9 +104,7 @@ type twitterTweet struct {
 	Retweet   bool          `json:"retweet"`
 }
 
-func createQuery(tweet *twitterTweet) string {
-	usersMap := make(map[string]string)
-
+func buildQuery(tweet *twitterTweet) string {
 	tweetQuery := `t as var(func: eq(id_str, "%s"))`
 	userQuery := `%s as var(func: eq(user_id, "%s"))`
 
@@ -125,8 +115,13 @@ func createQuery(tweet *twitterTweet) string {
 
 	query[1] = fmt.Sprintf(userQuery, "u", tweet.Author.UserID)
 	tweet.Author.UID = "uid(u)"
+
+	usersMap := make(map[string]string)
 	usersMap[tweet.Author.UserID] = "u"
 
+	// We will query only once for every user. We are storing all the users in the map who
+	// we have already queried. If a user_id is repeated, we will just use uid that we got
+	// in the previous query.
 	for i, user := range tweet.Mention {
 		var varName string
 		if name, ok := usersMap[user.UserID]; ok {
@@ -140,12 +135,7 @@ func createQuery(tweet *twitterTweet) string {
 		tweet.Mention[i].UID = fmt.Sprintf("uid(%s)", varName)
 	}
 
-	finalQuery := fmt.Sprintf(`
-query {
-%s
-}
-`, strings.Join(query, "\n"))
-
+	finalQuery := fmt.Sprintf("query {%s}", strings.Join(query, "\n"))
 	return finalQuery
 }
 
@@ -180,7 +170,7 @@ func runInserter(alphas []api.DgraphClient, c *y.Closer, tweets <-chan interface
 			// txn is not being discarded deliberately
 			// defer txn.Discard()
 
-			queryStr := createQuery(ft)
+			queryStr := buildQuery(ft)
 
 			tweet, err := json.Marshal(ft)
 			if err != nil {
@@ -196,7 +186,6 @@ func runInserter(alphas []api.DgraphClient, c *y.Closer, tweets <-chan interface
 			// only ONE retry attempt is made
 			retry := true
 		RETRY:
-			queryVars := map[string]string{"userID": ft.Author.UserID}
 			apiUpsert := &api.Request{
 				Mutations: []*api.Mutation{
 					&api.Mutation{
@@ -205,7 +194,6 @@ func runInserter(alphas []api.DgraphClient, c *y.Closer, tweets <-chan interface
 				},
 				CommitNow: commitNow,
 				Query:     queryStr,
-				Vars:      queryVars,
 			}
 			_, err = txn.Do(context.Background(), apiUpsert)
 			switch {
