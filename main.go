@@ -88,6 +88,7 @@ type twitterUser struct {
 	ScreenName       string `json:"screen_name,omitempty"`
 	Description      string `json:"description,omitempty"`
 	FriendsCount     int    `json:"friends_count,omitempty"`
+	FollowersCount     int    `json:"followers_count,omitempty"`
 	Verified         bool   `json:"verified,omitempty"`
 	ProfileBannerURL string `json:"profile_banner_url,omitempty"`
 	ProfileImageURL  string `json:"profile_image_url,omitempty"`
@@ -274,6 +275,7 @@ func filterTweet(jsn interface{}) (*twitterTweet, error) {
 			ScreenName:       tweet.User.ScreenName,
 			Description:      tweet.User.Description,
 			FriendsCount:     tweet.User.FriendsCount,
+			FollowersCount:   tweet.User.FollowersCount,
 			Verified:         tweet.User.Verified,
 			ProfileBannerURL: tweet.User.ProfileBannerURL,
 			ProfileImageURL:  tweet.User.ProfileImageURL,
