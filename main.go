@@ -36,8 +36,8 @@ import (
 
 	"github.com/ChimeraCoder/anaconda"
 	"github.com/dgraph-io/badger/y"
-	"github.com/dgraph-io/dgo"
-	"github.com/dgraph-io/dgo/protos/api"
+	"github.com/dgraph-io/dgo/v2"
+	"github.com/dgraph-io/dgo/v2/protos/api"
 	"google.golang.org/grpc"
 )
 
@@ -82,6 +82,7 @@ type progStats struct {
 
 type twitterUser struct {
 	UID              string `json:"uid,omitempty"`
+	DgraphType       string `json:"dgraph.type,omitempty"`
 	UserID           string `json:"user_id,omitempty"`
 	UserName         string `json:"user_name,omitempty"`
 	ScreenName       string `json:"screen_name,omitempty"`
@@ -93,15 +94,16 @@ type twitterUser struct {
 }
 
 type twitterTweet struct {
-	UID       string        `json:"uid,omitempty"`
-	IDStr     string        `json:"id_str"`
-	CreatedAt string        `json:"created_at"`
-	Message   string        `json:"message,omitempty"`
-	URLs      []string      `json:"urls,omitempty"`
-	HashTags  []string      `json:"hashtags,omitempty"`
-	Author    twitterUser   `json:"author"`
-	Mention   []twitterUser `json:"mention,omitempty"`
-	Retweet   bool          `json:"retweet"`
+	UID        string        `json:"uid,omitempty"`
+	DgraphType string        `json:"dgraph.type,omitempty"`
+	IDStr      string        `json:"id_str"`
+	CreatedAt  string        `json:"created_at"`
+	Message    string        `json:"message,omitempty"`
+	URLs       []string      `json:"urls,omitempty"`
+	HashTags   []string      `json:"hashtags,omitempty"`
+	Author     twitterUser   `json:"author"`
+	Mention    []twitterUser `json:"mention,omitempty"`
+	Retweet    bool          `json:"retweet"`
 }
 
 func buildQuery(tweet *twitterTweet) string {
@@ -252,19 +254,22 @@ func filterTweet(jsn interface{}) (*twitterTweet, error) {
 	for _, userMention := range tweet.Entities.User_mentions {
 		userMentions = append(userMentions, twitterUser{
 			UserID:     userMention.Id_str,
+			DgraphType: "User",
 			UserName:   userMention.Name,
 			ScreenName: userMention.Screen_name,
 		})
 	}
 
 	return &twitterTweet{
-		IDStr:     tweet.IdStr,
-		CreatedAt: createdAt.Format(cDgraphTimeFormat),
-		Message:   tweet.FullText,
-		URLs:      expandedURLs,
-		HashTags:  hashTagTexts,
+		IDStr:      tweet.IdStr,
+		DgraphType: "Tweet",
+		CreatedAt:  createdAt.Format(cDgraphTimeFormat),
+		Message:    tweet.FullText,
+		URLs:       expandedURLs,
+		HashTags:   hashTagTexts,
 		Author: twitterUser{
 			UserID:           tweet.User.IdStr,
+			DgraphType:       "User",
 			UserName:         tweet.User.Name,
 			ScreenName:       tweet.User.ScreenName,
 			Description:      tweet.User.Description,
@@ -350,26 +355,50 @@ func checkFatal(err error, format string, args ...interface{}) {
 }
 
 func getSchema() string {
-	var schema string
-	schema += fmt.Sprintf("user_id: string @index(exact) @upsert .\n")
-	schema += fmt.Sprintf("user_name: string @index(hash) .\n")
-	schema += fmt.Sprintf("screen_name: string @index(term) .\n")
-
-	schema += fmt.Sprintf("id_str: string @index(exact) @upsert .\n")
-	schema += fmt.Sprintf("created_at: dateTime @index(hour) .\n")
-	schema += fmt.Sprintf("hashtags: [string] @index(exact) .\n")
-
-	schema += fmt.Sprintf("author: uid @count @reverse .\n")
+	var schema strings.Builder
+	schema.WriteString(`
+		user_id: string @index(exact) @upsert .
+		user_name: string @index(hash) .
+		screen_name: string @index(term) .
+		id_str: string @index(exact) @upsert .
+		created_at: dateTime @index(hour) .
+		hashtags: [string] @index(exact) .
+		author: uid @count @reverse .
+	`)
 	switch dgraphVersion() {
 	case "v1.0":
-		schema += fmt.Sprintf("mention: uid @reverse .\n")
+		schema.WriteString("mention: uid @reverse .\n")
 	case "v1.1":
-		schema += fmt.Sprintf("mention: [uid] @reverse .\n")
+		schema.WriteString(`
+			mention: [uid] @reverse .
+
+			type Tweet {
+				id_str: string
+				created_at: dateTime
+				message: string
+				urls: [string]
+				hashtags: [string]
+				author: [User]
+				mention: [User]
+				retweet: bool
+			}
+
+			type User {
+				user_id: string
+				user_name: string
+				screen_name: string
+				description: string
+				friends_count: int
+				verified: bool
+				profile_banner_url: string
+				profile_image_url: string
+			}
+		`)
 	default:
 		log.Fatalf("cannot generate schema for unknown dgraph version")
 	}
 
-	return schema
+	return schema.String()
 }
 
 func dgraphVersion() string {
