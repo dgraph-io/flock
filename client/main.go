@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/dgraph-io/badger/y"
-	"github.com/dgraph-io/dgo"
-	"github.com/dgraph-io/dgo/protos/api"
+	"github.com/dgraph-io/dgo/v2"
+	"github.com/dgraph-io/dgo/v2/protos/api"
 	"google.golang.org/grpc"
 )
 
@@ -228,6 +228,7 @@ query all($screenName: string) {
     profile_banner_url
     profile_image_url
     friends_count
+    followers_count
     description
   }
 }
@@ -243,14 +244,15 @@ query all($screenName: string) {
 
 	var r struct {
 		QueryData []struct {
-			UID          string `json:"uid"`
-			ScreenName   string `json:"screen_name"`
-			UserID       string `json:"user_id"`
-			UserName     string `json:"user_name"`
-			BannerURL    string `json:"profile_banner_url"`
-			ImageURL     string `json:"profile_image_url"`
-			FriendsCount int64  `json:"friends_count"`
-			Description  string `json:"description"`
+			UID            string `json:"uid"`
+			ScreenName     string `json:"screen_name"`
+			UserID         string `json:"user_id"`
+			UserName       string `json:"user_name"`
+			BannerURL      string `json:"profile_banner_url"`
+			ImageURL       string `json:"profile_image_url"`
+			FriendsCount   int64  `json:"friends_count"`
+			FollowersCount int64  `json:"followers_count"`
+			Description    string `json:"description"`
 		} `json:"dataquery"`
 	}
 	if err := json.Unmarshal(resp.Json, &r); err != nil {
@@ -303,6 +305,7 @@ func (q *queryThree) runQuery(dgr *dgo.Dgraph) error {
     profile_banner_url
     profile_image_url
     friends_count
+    followers_count
     description
     total_mentions : val(a)
   }
@@ -318,15 +321,16 @@ func (q *queryThree) runQuery(dgr *dgo.Dgraph) error {
 
 	var r struct {
 		QueryData []struct {
-			UID           string `json:"uid"`
-			ScreenName    string `json:"screen_name"`
-			UserID        string `json:"user_id"`
-			UserName      string `json:"user_name"`
-			BannerURL     string `json:"profile_banner_url"`
-			ImageURL      string `json:"profile_image_url"`
-			FriendsCount  int64  `json:"friends_count"`
-			Description   string `json:"description"`
-			TotalMentions int64  `json:"total_mentions"`
+			UID            string `json:"uid"`
+			ScreenName     string `json:"screen_name"`
+			UserID         string `json:"user_id"`
+			UserName       string `json:"user_name"`
+			BannerURL      string `json:"profile_banner_url"`
+			ImageURL       string `json:"profile_image_url"`
+			FriendsCount   int64  `json:"friends_count"`
+			FollowersCount int64  `json:"followers_count"`
+			Description    string `json:"description"`
+			TotalMentions  int64  `json:"total_mentions"`
 		} `json:"dataquery"`
 	}
 	if err := json.Unmarshal(resp.Json, &r); err != nil {
@@ -376,6 +380,7 @@ func (q *queryFour) runQuery(dgr *dgo.Dgraph) error {
     profile_banner_url
     profile_image_url
     friends_count
+    followers_count
     description
     total_tweets : val(a)
   }
@@ -391,15 +396,16 @@ func (q *queryFour) runQuery(dgr *dgo.Dgraph) error {
 
 	var r struct {
 		QueryData []struct {
-			UID          string `json:"uid"`
-			ScreenName   string `json:"screen_name"`
-			UserID       string `json:"user_id"`
-			UserName     string `json:"user_name"`
-			BannerURL    string `json:"profile_banner_url"`
-			ImageURL     string `json:"profile_image_url"`
-			FriendsCount int64  `json:"friends_count"`
-			Description  string `json:"description"`
-			TotalTweets  int64  `json:"total_tweets"`
+			UID            string `json:"uid"`
+			ScreenName     string `json:"screen_name"`
+			UserID         string `json:"user_id"`
+			UserName       string `json:"user_name"`
+			BannerURL      string `json:"profile_banner_url"`
+			ImageURL       string `json:"profile_image_url"`
+			FriendsCount   int64  `json:"friends_count"`
+			FollowersCount int64  `json:"followers_count"`
+			Description    string `json:"description"`
+			TotalTweets    int64  `json:"total_tweets"`
 		} `json:"dataquery"`
 	}
 	if err := json.Unmarshal(resp.Json, &r); err != nil {
@@ -489,6 +495,7 @@ query all($userID: string) {
     profile_banner_url
     profile_image_url
     friends_count
+    followers_count
     description
   }
 }
@@ -504,14 +511,15 @@ query all($userID: string) {
 
 	var r struct {
 		QueryData []struct {
-			UID          string `json:"uid"`
-			ScreenName   string `json:"screen_name"`
-			UserID       string `json:"user_id"`
-			UserName     string `json:"user_name"`
-			BannerURL    string `json:"profile_banner_url"`
-			ImageURL     string `json:"profile_image_url"`
-			FriendsCount int64  `json:"friends_count"`
-			Description  string `json:"description"`
+			UID            string `json:"uid"`
+			ScreenName     string `json:"screen_name"`
+			UserID         string `json:"user_id"`
+			UserName       string `json:"user_name"`
+			BannerURL      string `json:"profile_banner_url"`
+			ImageURL       string `json:"profile_image_url"`
+			FriendsCount   int64  `json:"friends_count"`
+			FollowersCount int64  `json:"followers_count"`
+			Description    string `json:"description"`
 		} `json:"dataquery"`
 	}
 	if err := json.Unmarshal(resp.Json, &r); err != nil {
@@ -709,6 +717,7 @@ func (q *queryEight) runQuery(dgr *dgo.Dgraph) error {
     profile_banner_url
     profile_image_url
     friends_count
+    followers_count
     description
     total_tweets : val(a)
     ~author @filter(ge(created_at, "%v")) {
@@ -727,16 +736,17 @@ func (q *queryEight) runQuery(dgr *dgo.Dgraph) error {
 
 	var r struct {
 		QueryData []struct {
-			UID          string `json:"uid"`
-			ScreenName   string `json:"screen_name"`
-			UserID       string `json:"user_id"`
-			UserName     string `json:"user_name"`
-			BannerURL    string `json:"profile_banner_url"`
-			ImageURL     string `json:"profile_image_url"`
-			FriendsCount int64  `json:"friends_count"`
-			Description  string `json:"description"`
-			TotalTweets  int64  `json:"total_tweets"`
-			Tweet        []struct {
+			UID            string `json:"uid"`
+			ScreenName     string `json:"screen_name"`
+			UserID         string `json:"user_id"`
+			UserName       string `json:"user_name"`
+			BannerURL      string `json:"profile_banner_url"`
+			ImageURL       string `json:"profile_image_url"`
+			FriendsCount   int64  `json:"friends_count"`
+			FollowersCount int64  `json:"followers_count"`
+			Description    string `json:"description"`
+			TotalTweets    int64  `json:"total_tweets"`
+			Tweet          []struct {
 				CreatedAt string `json:"created_at"`
 			} `json:"~author"`
 		} `json:"dataquery"`
