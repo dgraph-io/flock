@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/dgraph-io/badger/y"
-	"github.com/dgraph-io/dgo"
-	"github.com/dgraph-io/dgo/protos/api"
+	"github.com/dgraph-io/dgo/v2"
+	"github.com/dgraph-io/dgo/v2/protos/api"
 	"google.golang.org/grpc"
 )
 
@@ -37,6 +37,36 @@ type progOptions struct {
 type progStats struct {
 	Success  uint32
 	Failures uint32
+}
+
+type twitterUser struct {
+	UID              string         `json:"uid,omitempty"`
+	DgraphType       string         `json:"dgraph.type,omitempty"`
+	UserID           string         `json:"user_id,omitempty"`
+	UserName         string         `json:"user_name,omitempty"`
+	ScreenName       string         `json:"screen_name,omitempty"`
+	Description      string         `json:"description,omitempty"`
+	FriendsCount     int            `json:"friends_count,omitempty"`
+	FollowersCount   int            `json:"followers_count,omitempty"`
+	Verified         bool           `json:"verified,omitempty"`
+	ProfileBannerURL string         `json:"profile_banner_url,omitempty"`
+	ProfileImageURL  string         `json:"profile_image_url,omitempty"`
+	TotalMentions    int64          `json:"total_mentions,omitempty"`
+	TotalTweets      int64          `json:"total_tweets,omitempty"`
+	Tweet            []twitterTweet `json:"~author,omitempty"`
+}
+
+type twitterTweet struct {
+	UID        string        `json:"uid,omitempty"`
+	DgraphType string        `json:"dgraph.type,omitempty"`
+	IDStr      string        `json:"id_str,omitempty"`
+	CreatedAt  string        `json:"created_at,omitempty"`
+	Message    string        `json:"message,omitempty"`
+	URLs       []string      `json:"urls,omitempty"`
+	Hashtags   []string      `json:"hashtags,omitempty"`
+	Author     twitterUser   `json:"author,omitempty"`
+	Mention    []twitterUser `json:"mention,omitempty"`
+	Retweet    bool          `json:"retweet,omitempty"`
 }
 
 // dgraphQuery interface represents an agent query
@@ -69,9 +99,7 @@ func (q *queryOne) getParams(dgr *dgo.Dgraph) error {
 	}
 
 	var r struct {
-		QueryData []struct {
-			Hashtags []string `json:"hashtags"`
-		} `json:"dataquery"`
+		QueryData []twitterTweet `json:"dataquery"`
 	}
 	if err := json.Unmarshal(resp.Json, &r); err != nil {
 		log.Printf("error in unmarshaling result :: %v", err)
@@ -123,13 +151,7 @@ query all($tagVal: string) {
 	}
 
 	var r struct {
-		QueryData []struct {
-			UID      string   `json:"uid"`
-			IDStr    string   `json:"id_str"`
-			Retweet  bool     `json:"retweet"`
-			Message  string   `json:"message"`
-			Hashtags []string `json:"hashtags"`
-		} `json:"dataquery"`
+		QueryData []twitterTweet `json:"dataquery"`
 	}
 	if err := json.Unmarshal(resp.Json, &r); err != nil {
 		log.Printf("error in unmarshalling result :: %v", err)
@@ -188,9 +210,7 @@ func (q *queryTwo) getParams(dgr *dgo.Dgraph) error {
 	}
 
 	var r struct {
-		QueryData []struct {
-			ScreenName string `json:"screen_name"`
-		} `json:"dataquery"`
+		QueryData []twitterUser `json:"dataquery"`
 	}
 	if err := json.Unmarshal(resp.Json, &r); err != nil {
 		log.Printf("error in unmarshalling result :: %v", err)
@@ -228,6 +248,7 @@ query all($screenName: string) {
     profile_banner_url
     profile_image_url
     friends_count
+    followers_count
     description
   }
 }
@@ -242,16 +263,7 @@ query all($screenName: string) {
 	}
 
 	var r struct {
-		QueryData []struct {
-			UID          string `json:"uid"`
-			ScreenName   string `json:"screen_name"`
-			UserID       string `json:"user_id"`
-			UserName     string `json:"user_name"`
-			BannerURL    string `json:"profile_banner_url"`
-			ImageURL     string `json:"profile_image_url"`
-			FriendsCount int64  `json:"friends_count"`
-			Description  string `json:"description"`
-		} `json:"dataquery"`
+		QueryData []twitterUser `json:"dataquery"`
 	}
 	if err := json.Unmarshal(resp.Json, &r); err != nil {
 		log.Printf("error in unmarshalling result :: %v", err)
@@ -303,6 +315,7 @@ func (q *queryThree) runQuery(dgr *dgo.Dgraph) error {
     profile_banner_url
     profile_image_url
     friends_count
+    followers_count
     description
     total_mentions : val(a)
   }
@@ -317,17 +330,7 @@ func (q *queryThree) runQuery(dgr *dgo.Dgraph) error {
 	}
 
 	var r struct {
-		QueryData []struct {
-			UID           string `json:"uid"`
-			ScreenName    string `json:"screen_name"`
-			UserID        string `json:"user_id"`
-			UserName      string `json:"user_name"`
-			BannerURL     string `json:"profile_banner_url"`
-			ImageURL      string `json:"profile_image_url"`
-			FriendsCount  int64  `json:"friends_count"`
-			Description   string `json:"description"`
-			TotalMentions int64  `json:"total_mentions"`
-		} `json:"dataquery"`
+		QueryData []twitterUser `json:"dataquery"`
 	}
 	if err := json.Unmarshal(resp.Json, &r); err != nil {
 		log.Printf("error in unmarshalling result :: %v", err)
@@ -376,6 +379,7 @@ func (q *queryFour) runQuery(dgr *dgo.Dgraph) error {
     profile_banner_url
     profile_image_url
     friends_count
+    followers_count
     description
     total_tweets : val(a)
   }
@@ -390,17 +394,7 @@ func (q *queryFour) runQuery(dgr *dgo.Dgraph) error {
 	}
 
 	var r struct {
-		QueryData []struct {
-			UID          string `json:"uid"`
-			ScreenName   string `json:"screen_name"`
-			UserID       string `json:"user_id"`
-			UserName     string `json:"user_name"`
-			BannerURL    string `json:"profile_banner_url"`
-			ImageURL     string `json:"profile_image_url"`
-			FriendsCount int64  `json:"friends_count"`
-			Description  string `json:"description"`
-			TotalTweets  int64  `json:"total_tweets"`
-		} `json:"dataquery"`
+		QueryData []twitterUser `json:"dataquery"`
 	}
 	if err := json.Unmarshal(resp.Json, &r); err != nil {
 		log.Printf("error in unmarshalling result :: %v", err)
@@ -449,9 +443,7 @@ func (q *queryFive) getParams(dgr *dgo.Dgraph) error {
 	}
 
 	var r struct {
-		QueryData []struct {
-			UserID string `json:"user_id"`
-		} `json:"dataquery"`
+		QueryData []twitterUser `json:"dataquery"`
 	}
 	if err := json.Unmarshal(resp.Json, &r); err != nil {
 		log.Printf("error in unmarshalling result :: %v", err)
@@ -489,6 +481,7 @@ query all($userID: string) {
     profile_banner_url
     profile_image_url
     friends_count
+    followers_count
     description
   }
 }
@@ -503,16 +496,7 @@ query all($userID: string) {
 	}
 
 	var r struct {
-		QueryData []struct {
-			UID          string `json:"uid"`
-			ScreenName   string `json:"screen_name"`
-			UserID       string `json:"user_id"`
-			UserName     string `json:"user_name"`
-			BannerURL    string `json:"profile_banner_url"`
-			ImageURL     string `json:"profile_image_url"`
-			FriendsCount int64  `json:"friends_count"`
-			Description  string `json:"description"`
-		} `json:"dataquery"`
+		QueryData []twitterUser `json:"dataquery"`
 	}
 	if err := json.Unmarshal(resp.Json, &r); err != nil {
 		log.Printf("error in unmarshalling result :: %v", err)
@@ -566,10 +550,7 @@ func (q *querySix) getParams(dgr *dgo.Dgraph) error {
 	}
 
 	var r struct {
-		QueryData []struct {
-			Hashtags  []string `json:"hashtags"`
-			CreatedAt string   `json:"created_at"`
-		} `json:"dataquery"`
+		QueryData []twitterTweet `json:"dataquery"`
 	}
 	if err := json.Unmarshal(resp.Json, &r); err != nil {
 		log.Printf("error in unmarshaling result :: %v", err)
@@ -640,12 +621,7 @@ func (q *querySeven) getParams(dgr *dgo.Dgraph) error {
 	}
 
 	var r struct {
-		QueryData []struct {
-			ScreenName string `json:"screen_name"`
-			Tweet      []struct {
-				CreatedAt string `json:"created_at"`
-			} `json:"~author"`
-		} `json:"dataquery"`
+		QueryData []twitterUser `json:"dataquery"`
 	}
 	if err := json.Unmarshal(resp.Json, &r); err != nil {
 		log.Printf("error in unmarshalling result :: %v", err)
@@ -709,6 +685,7 @@ func (q *queryEight) runQuery(dgr *dgo.Dgraph) error {
     profile_banner_url
     profile_image_url
     friends_count
+    followers_count
     description
     total_tweets : val(a)
     ~author @filter(ge(created_at, "%v")) {
@@ -726,20 +703,7 @@ func (q *queryEight) runQuery(dgr *dgo.Dgraph) error {
 	}
 
 	var r struct {
-		QueryData []struct {
-			UID          string `json:"uid"`
-			ScreenName   string `json:"screen_name"`
-			UserID       string `json:"user_id"`
-			UserName     string `json:"user_name"`
-			BannerURL    string `json:"profile_banner_url"`
-			ImageURL     string `json:"profile_image_url"`
-			FriendsCount int64  `json:"friends_count"`
-			Description  string `json:"description"`
-			TotalTweets  int64  `json:"total_tweets"`
-			Tweet        []struct {
-				CreatedAt string `json:"created_at"`
-			} `json:"~author"`
-		} `json:"dataquery"`
+		QueryData []twitterUser `json:"dataquery"`
 	}
 	if err := json.Unmarshal(resp.Json, &r); err != nil {
 		log.Printf("error in unmarshalling result :: %v", err)
@@ -808,12 +772,7 @@ func (q *queryNine) getParams(dgr *dgo.Dgraph) error {
 	}
 
 	var r struct {
-		QueryData []struct {
-			UserID string `json:"user_id"`
-			Tweet  []struct {
-				CreatedAt string `json:"created_at"`
-			} `json:"~author"`
-		} `json:"dataquery"`
+		QueryData []twitterUser `json:"dataquery"`
 	}
 	if err := json.Unmarshal(resp.Json, &r); err != nil {
 		log.Printf("error in unmarshalling result :: %v", err)
