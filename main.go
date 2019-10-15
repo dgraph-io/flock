@@ -265,7 +265,6 @@ func filterTweet(jsn interface{}) (*twitterTweet, error) {
 	default:
 		return nil, errNotATweet
 	}
-	fmt.Println(tweet.CreatedAt)
 
 	createdAt, err := time.Parse(cTimeFormat, tweet.CreatedAt)
 	if err != nil {
