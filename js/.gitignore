@@ -8,4 +8,5 @@ lerna-debug.log*
 
 # Dependency files and directories
 node_modules/
+data/
 credentials.json
