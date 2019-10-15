@@ -41,7 +41,7 @@ import (
 
 const (
 	cTimeFormat       = "Mon Jan 02 15:04:05 -0700 2006"
-	cDgraphTimeFormat = "2006-01-02T15:04:05.999999999+10:00"
+	cDgraphTimeFormat = "2006-01-02T15:04:05.999999999-07:00"
 
 	cDgraphSchema = `
 		type Tweet {
@@ -265,6 +265,7 @@ func filterTweet(jsn interface{}) (*twitterTweet, error) {
 	default:
 		return nil, errNotATweet
 	}
+	fmt.Println(tweet.CreatedAt)
 
 	createdAt, err := time.Parse(cTimeFormat, tweet.CreatedAt)
 	if err != nil {
