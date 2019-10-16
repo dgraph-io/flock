@@ -2,14 +2,15 @@ const dgraph = require('dgraph-js');
 const grpc = require('grpc');
 const twitter = require('twitter');
 
+// Twitter credentials
 const creds = require('./credentials.json');
-const client = new twitter(creds);
 
+// Global constants
 const ALPHA_ADDR = process.env.ALPHA_ADDR || "localhost:9080"
 const LOG_INTERVAL_TIME = process.env.LOG_INTERVAL_TIME || 2000;
-const startStatus = new Date().getTime();
+const startStatus = Date.now();
 
-let lastStatus = 0;
+// Global Variables
 let retry = true;
 let failureCount = 0;
 let totalTweets = 0;
@@ -17,9 +18,11 @@ let oldTotalTweets = 0;
 let retryCount = 0;
 let errorCount = 0;
 
+// Set Dgraph client and Dgraph client stub
 const dgraphClientStub = new dgraph.DgraphClientStub(ALPHA_ADDR, grpc.credentials.createInsecure());
 const dgraphClient = new dgraph.DgraphClient(dgraphClientStub);
 
+// Set the schema for types: Tweet and User
 async function setSchema() {
   const schema = `
     type Tweet {
@@ -59,6 +62,7 @@ async function setSchema() {
   await dgraphClient.alter(op);
 }
 
+// Upsert Tweet JSON data into Dgraph
 async function upsertData(jsonObj, query) {
   try {
     const mu = new dgraph.Mutation();
@@ -90,6 +94,7 @@ async function upsertData(jsonObj, query) {
   }
 }
 
+// Filtering the Tweet
 async function filterTweet(tweet) {
   const userMentions = [];
   const usersObject = [];
@@ -141,13 +146,13 @@ async function filterTweet(tweet) {
   return userObj;
 }
 
+// Building the query to be used for upsert
 async function buildQuery(tweet) {
   const usersObject = [];
-  const query = [];
-
-  query.push(`t as var(func: eq(id_str, "${tweet.id_str}"))`);
-  query.push(`u as var(func: eq(user_id, "${tweet.author.user_id}"))`);
-
+  const query = [
+    `t as var(func: eq(id_str, "${tweet.id_str}"))`,
+    `u as var(func: eq(user_id, "${tweet.author.user_id}"))`,
+  ];
   usersObject[tweet.author.user_id] = 'u';
 
   tweet.mention.forEach((element, index) => {
@@ -161,31 +166,23 @@ async function buildQuery(tweet) {
     }
   });
 
-  const finalQuery = `query {${query.join('\n')}}`;
-  return finalQuery;
+  return `query {${query.join('\n')}}`;;
 }
 
 function reportStats() {
-  const now = new Date().getTime();
-  // tslint:disable-next-line no-console
+  const now = Date.now();
   console.log(`STATS Tweets: ${totalTweets}, Failues: ${failureCount}, Retries: ${retryCount}, \
-Errors: ${errorCount}, Commit Rate: ${(totalTweets-oldTotalTweets)/(LOG_INTERVAL_TIME/1000)}  Total Time: ${now - startStatus} ms`);
+Errors: ${errorCount}, Commit Rate: ${(totalTweets-oldTotalTweets)/(LOG_INTERVAL_TIME/1000)}, \
+Total Time: ${now - startStatus} ms`);
   oldTotalTweets = totalTweets;
 }
 
 async function wait(time) {
-  return new Promise((resolve) => {
-    const id = setTimeout(
-        () => {
-          clearTimeout(id);
-          resolve();
-        },
-        time,
-    );
-  });
+  return new Promise((resolve) => setTimeout(resolve, time));
 }
 
 async function main() {
+  const client = new twitter(creds);
   await setSchema();
   setInterval(reportStats, LOG_INTERVAL_TIME);
   client.stream('statuses/sample.json', function(stream) {
