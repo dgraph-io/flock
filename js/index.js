@@ -169,14 +169,16 @@ async function buildQuery(tweet) {
   return `query {${query.join('\n')}}`;;
 }
 
+// Report Stats of the tweet loader
 function reportStats() {
   const now = Date.now();
   console.log(`STATS Tweets: ${totalTweets}, Failues: ${failureCount}, Retries: ${retryCount}, \
-Errors: ${errorCount}, Commit Rate: ${(totalTweets-oldTotalTweets)/(LOG_INTERVAL_TIME/1000)}, \
-Total Time: ${now - startStatus} ms`);
+Errors: ${errorCount}, Commit Rate: ${Math.round((totalTweets-oldTotalTweets)/(LOG_INTERVAL_TIME/1000))}, \
+Uptime: ${Math.round((now - startStatus)/1000)}s`);
   oldTotalTweets = totalTweets;
 }
 
+// Wait function that takes time in milliseconds
 async function wait(time) {
   return new Promise((resolve) => setTimeout(resolve, time));
 }
@@ -185,13 +187,14 @@ async function main() {
   const client = new twitter(creds);
   await setSchema();
   setInterval(reportStats, LOG_INTERVAL_TIME);
+
   client.stream('statuses/sample.json', function(stream) {
     stream.on('data', async function(tweet) {
-      totalTweets += 1;
       const tweetObj = await filterTweet(tweet);
       const queries = await buildQuery(tweetObj);
       retry = true;
       await upsertData(tweetObj, queries);
+      totalTweets += 1;
     });
     stream.on('error', function(error) {
       console.log(error);
