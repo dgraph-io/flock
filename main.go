@@ -45,36 +45,45 @@ const (
 
 	cDgraphSchema = `
 		type Tweet {
-			id_str: string
-			created_at: dateTime
-			message: string
-			urls: [string]
-			hashtags: [string]
-			author: [User]
-			mention: [User]
-			retweet: bool
+			id_str
+			created_at
+			message
+			urls
+			hashtags
+			author
+			mention
+			retweet
 		}
-
+		
 		type User {
-			user_id: string
-			user_name: string
-			screen_name: string
-			description: string
-			friends_count: int
-			followers_count: int
-			verified: bool
-			profile_banner_url: string
-			profile_image_url: string
+			user_id
+			user_name
+			screen_name
+			description
+			friends_count
+			followers_count
+			verified
+			profile_banner_url
+			profile_image_url
 		}
 
 		user_id: string @index(exact) @upsert .
 		user_name: string @index(hash) .
 		screen_name: string @index(term) .
+		description: string .
+		friends_count: int .
+		followers_count: int .
+		verified: bool .
+		profile_banner_url: string .
+		profile_image_url: string .
 		id_str: string @index(exact) @upsert .
 		created_at: dateTime @index(hour) .
+		message: string .
+		urls: [string] .
 		hashtags: [string] @index(exact) .
 		author: uid @count @reverse .
 		mention: [uid] @reverse .
+		retweet: bool .
 	`
 )
 
