@@ -35,7 +35,7 @@ Killing flock ... done
 
 ```sh
 $ cd client
-$ go run main.go -a localhost:9080
+$ docker-compose up
 ```
 
 Flock query client will begin printing out periodic log messages mentioning its

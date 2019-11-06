@@ -28,3 +28,28 @@ Killing flock ... done
 ```
 
 ---
+
+### Running Query Client
+
+- On another terminal, start query client:
+
+```sh
+$ cd client
+$ docker-compose up
+```
+
+Flock query client will begin printing out periodic log messages mentioning its
+querying rate. You're good to go if you see the `query_rate` higher
+than 0/sec, which means queries to Dgraph have been successful.
+
+A few minutes of running the flock client is sufficient to get
+enough data on how queries performed. To stop running flock client,
+press Ctrl+C on the terminal running flock client.
+
+```sh
+$ docker-compose up
+...
+<Ctrl+C>
+```
+
+---
