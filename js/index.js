@@ -8,15 +8,17 @@ const creds = require('./credentials.json');
 // Global constants
 const ALPHA_ADDR = process.env.ALPHA_ADDR || "localhost:9080"
 const LOG_INTERVAL_TIME = process.env.LOG_INTERVAL_TIME || 2000;
+const LOG_INTERVAL_TIME_IN_SECONDS = LOG_INTERVAL_TIME/1000;
 const startStatus = Date.now();
 
 // Global Variables
 let retry = true;
-let failureCount = 0;
+let failures = 0;
 let totalTweets = 0;
-let oldTotalTweets = 0;
-let retryCount = 0;
-let errorCount = 0;
+let commits = 0;
+let oldCommits = 0;
+let retries = 0;
+let errors = 0;
 
 // Set Dgraph client and Dgraph client stub
 const dgraphClientStub = new dgraph.DgraphClientStub(ALPHA_ADDR, grpc.credentials.createInsecure());
@@ -65,14 +67,17 @@ async function setSchema() {
 // Upsert Tweet JSON data into Dgraph
 async function upsertData(jsonObj, query) {
   try {
+    // create a mutation of the JSON object
     const mu = new dgraph.Mutation();
     mu.setSetJson(jsonObj);
 
+    // creating a request for the upsertion
     const req = new dgraph.Request();
     req.setMutationsList([mu]);
     req.setQuery(query);
     req.setCommitNow(true);
 
+    // performing the upsertion with doRequest
     await dgraphClient.newTxn().doRequest(req);
   } catch (err) {
     const errMsg = err.message;
@@ -81,14 +86,17 @@ async function upsertData(jsonObj, query) {
       console.log('ERROR Connection refused... waiting a bit');
       await wait(5000);
     } else if (errMsg.includes('already been committed or discarded')) {
-      failureCount += 1;
+      // failed to upsert; transaction already commited or discarded
+      failures += 1;
     } else if (retry && errMsg.includes('Please retry')) {
-      retryCount += 1;
+      // retry upsert once again after waiting for 100ms
+      retries += 1;
       await wait(100);
       retry = false;
       await upsertData(jsonObj, query);
     } else {
-      errorCount += 1;
+      // unable to upsert
+      errors += 1;
       console.log(`ERROR Unable to commit.\n${err}\n`);
     }
   }
@@ -96,9 +104,14 @@ async function upsertData(jsonObj, query) {
 
 // Filtering the Tweet
 async function filterTweet(tweet) {
+  // creating constants for filtered tweet object
+  const hashtags = [];
   const userMentions = [];
   const usersObject = [];
+  // assigning `uid(u)` for the author id
   usersObject[tweet.user.id_str] = 'uid(u)';
+  // assigning `uid(mK)` for the mentioned user ids
+  // or `uid(u)` if the author himself is mentioned
   tweet.entities.user_mentions.forEach((element, index) => {
     let uid;
     if (usersObject[element.id_str] != undefined) {
@@ -115,11 +128,12 @@ async function filterTweet(tweet) {
       'screen_name': element.screen_name,
     });
   });
-  const hashtags = [];
+  // extract hashtags and store them in an array
   tweet.entities.hashtags.forEach((element) => {
     hashtags.push(element.text);
   });
-  const author = {
+  // create author object
+  const authorObj = {
     'uid': `uid(u)`,
     'user_id': tweet.user.id_str,
     'dgraph.type': 'User',
@@ -132,7 +146,8 @@ async function filterTweet(tweet) {
     'profile_banner_url': tweet.user.profile_banner_url,
     'profile_image_url': tweet.user.profile_image_url,
   };
-  const userObj = {
+  // create tweet object
+  const tweetObj = {
     'uid': `uid(t)`,
     'id_str': tweet.id_str,
     'dgraph.type': 'Tweet',
@@ -141,20 +156,22 @@ async function filterTweet(tweet) {
     'urls': tweet.urls,
     'hashtags': hashtags,
     'mention': userMentions,
-    'author': author,
+    'author': authorObj,
   };
-  return userObj;
+  return tweetObj;
 }
 
 // Building the query to be used for upsert
 async function buildQuery(tweet) {
+  // creating constants for building upsert query
   const usersObject = [];
   const query = [
     `t as var(func: eq(id_str, "${tweet.id_str}"))`,
     `u as var(func: eq(user_id, "${tweet.author.user_id}"))`,
   ];
+  // assign `u` for the author id
   usersObject[tweet.author.user_id] = 'u';
-
+  // assigning `mK` for the mentioned user ids
   tweet.mention.forEach((element, index) => {
     let name;
     if (usersObject[element.user_id] != undefined) {
@@ -172,10 +189,10 @@ async function buildQuery(tweet) {
 // Report Stats of the tweet loader
 function reportStats() {
   const now = Date.now();
-  console.log(`STATS Tweets: ${totalTweets}, Failues: ${failureCount}, Retries: ${retryCount}, \
-Errors: ${errorCount}, Commit Rate: ${Math.round((totalTweets-oldTotalTweets)/(LOG_INTERVAL_TIME/1000))}, \
+  console.log(`STATS Tweets: ${totalTweets}, Failues: ${failures}, Retries: ${retries}, \
+Errors: ${errors}, Commit Rate: ${Math.round((commits-oldCommits)/LOG_INTERVAL_TIME_IN_SECONDS)}, \
 Uptime: ${Math.round((now - startStatus)/1000)}s`);
-  oldTotalTweets = totalTweets;
+  oldCommits = commits;
 }
 
 // Wait function that takes time in milliseconds
@@ -184,17 +201,22 @@ async function wait(time) {
 }
 
 async function main() {
+  // create twitter client
   const client = new twitter(creds);
+  // set Dgraph schema
   await setSchema();
+  // report stats in specific intervals
   setInterval(reportStats, LOG_INTERVAL_TIME);
 
+  // fetch tweets from the twitter stream
   client.stream('statuses/sample.json', function(stream) {
     stream.on('data', async function(tweet) {
+      totalTweets += 1;
       const tweetObj = await filterTweet(tweet);
       const queries = await buildQuery(tweetObj);
       retry = true;
       await upsertData(tweetObj, queries);
-      totalTweets += 1;
+      commits += 1;
     });
     stream.on('error', function(error) {
       console.log(error);
@@ -203,7 +225,7 @@ async function main() {
 }
 
 main().then(() => {
-  console.log(`\nReporting stats every ${LOG_INTERVAL_TIME/1000} seconds\n`)
+  console.log(`\nReporting stats every ${LOG_INTERVAL_TIME_IN_SECONDS} seconds\n`)
 }).catch((e) => {
   console.log(e);
 });
