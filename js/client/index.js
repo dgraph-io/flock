@@ -21,9 +21,9 @@ const dgraphClient = new dgraph.DgraphClient(dgraphClientStub);
 class Query {
     // constructor takes in the query number(index) to set two of the queries and reference
     constructor(index) {
-        this.query1 = fetcher.query1(index);
-        this.query2 = fetcher.query2(index);
-        this.reference = fetcher.ref(index);
+        this.query1 = fetcher.paramsQuery(index);
+        this.query2 = fetcher.runQuery(index);
+        this.reference = fetcher.reference(index);
     }
     
     // this function usually obtains the parameters needed for the runQuery function except for few cases
@@ -74,7 +74,7 @@ class Query {
             return false;
         }
         // check empty response
-        if (data.dataquery.length < 0) {
+        if (data.dataquery.length <= 0) {
             console.log(`Empty response returned from Dgraph for query:\n${this.query2}\n`);
             failures += 1;
             return false;
@@ -84,39 +84,25 @@ class Query {
     }
 }
 
-// Creating query instances
-const queryOne = new Query(1);
-const queryTwo = new Query(2);
-const queryThree = new Query(3);
-const queryFour = new Query(4);
-const queryFive = new Query(5);
-const querySix = new Query(6);
-const querySeven = new Query(7);
-const queryEight = new Query(8);
-const queryNine = new Query(9);
+// Creating an array of query instances
+const queryArray = [];
+for (let i=1; i<10; i++) {
+    queryArray.push(new Query(i));
+}
 
 // Query tweet data in Dgraph
 async function queryData(query, vars) {
     // create a transaction
     const txn = dgraphClient.newTxn({ readOnly: true });
-    // create a response object
-    let response;
-    // if variable is defined 
-    if (vars == undefined) {
-        response = await txn.query(query);
-    } else {
-        // quering with vars
-        response = await txn.queryWithVars(query, vars);
-    }
-    return response.getJson();
+    // quering dgraph with vars and returning the response JSON
+    return (await txn.queryWithVars(query, vars)).getJson();
 }
 
 // Report Stats of the tweet loader
 function reportStats() {
-    const now = Date.now();
     console.log(`STATS \tSuccess: ${successes}, \tFailures: ${failures}, \
  \tQuery Rate: ${Math.round((successes-oldSuccesses)/LOG_INTERVAL_TIME_IN_SECONDS)}, \
- \tUptime: ${Math.round((now - startStatus)/1000)}s`);
+ \tUptime: ${Math.round((Date.now() - startStatus)/1000)}s`);
     oldSuccesses = successes;
 }
   
@@ -135,23 +121,10 @@ async function main() {
     // report stats in specific intervals
     setInterval(reportStats, LOG_INTERVAL_TIME);
 
-    // arrays of queries
-    const queries = [
-        queryOne,
-        queryTwo,
-        queryThree,
-        queryFour,
-        queryFive,
-        querySix,
-        querySeven,
-        queryEight,
-        queryNine,
-    ];
-
     // infinitely run queries in circle
     for (let i = 0;; i++) {
-        runQueries(queries[i]);
-        if(i < queries.length) {
+        runQueries(queryArray[i]);
+        if(i < queryArray.length) {
             i = 0;
         }
         // adding delay to avoid JS heap OOM due to the infinite loop
@@ -159,6 +132,6 @@ async function main() {
     };
 }
   
-main().then().catch((e) => {
+main().catch((e) => {
     console.log("ERROR: ", e);
 });

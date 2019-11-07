@@ -5,6 +5,7 @@ services:
     container_name: flock_client
     labels:
       cluster: flock-cluster
+    restart: always
     environment:
       - ALPHA_ADDR=localhost:9080
       - LOG_INTERVAL_TIME=2000

@@ -134,7 +134,7 @@ async function filterTweet(tweet) {
   });
   // create author object
   const authorObj = {
-    'uid': `uid(u)`,
+    'uid': 'uid(u)',
     'user_id': tweet.user.id_str,
     'dgraph.type': 'User',
     'user_name': tweet.user.name,
@@ -148,7 +148,7 @@ async function filterTweet(tweet) {
   };
   // create tweet object
   const tweetObj = {
-    'uid': `uid(t)`,
+    'uid': 'uid(t)',
     'id_str': tweet.id_str,
     'dgraph.type': 'Tweet',
     'created_at': new Date(tweet.created_at),
