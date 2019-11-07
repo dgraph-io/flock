@@ -60,22 +60,26 @@ class Query {
             return;
         }
 
-        let data;
+        let data, variable;
         // run the query - if params is defined, pass variables
         if (this.params == undefined) {
-            data = await queryData(this.query1);
+            data = await queryData(this.query2);
         } else {
-            data = await queryData(this.query1, { "$var": this.params });
+            variable = this.params[fetcher.getRandomInt(this.params.length)];
+            if (this.reference === "hashtags") {
+                variable = variable[fetcher.getRandomInt(variable.length)];
+            }
+            data = await queryData(this.query2, { "$var": variable });
         }
         // check response mismatch
-        if (data.hasOwnProperty('dataquery') == false) {
-            console.log(`dataquery key not found in the response of the query:\n${this.query2}\n`);
+        if (data.hasOwnProperty('dataquery') === false) {
+            console.log(`dataquery key not found in the response of the query:\n${this.query2}\nvariables:\t$var = ${variable}`);
             failures += 1;
             return false;
         }
         // check empty response
         if (data.dataquery.length <= 0) {
-            console.log(`Empty response returned from Dgraph for query:\n${this.query2}\n`);
+            console.log(`Empty response returned from Dgraph for query:\n${this.query2}\nvariables:\n$var = ${variable}`);
             failures += 1;
             return false;
         }
@@ -121,12 +125,10 @@ async function main() {
     // report stats in specific intervals
     setInterval(reportStats, LOG_INTERVAL_TIME);
 
-    // infinitely run queries in circle
-    for (let i = 0;; i++) {
-        runQueries(queryArray[i]);
-        if(i < queryArray.length) {
-            i = 0;
-        }
+    // infinitely randomly pick queries to run
+    for (;;) {
+        runQueries(queryArray[fetcher.getRandomInt(queryArray.length)]);
+
         // adding delay to avoid JS heap OOM due to the infinite loop
         await wait(100);
     };

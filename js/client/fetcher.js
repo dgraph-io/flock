@@ -59,7 +59,8 @@ function reference(index) {
 }
 
 module.exports = {
+    getRandomInt,
     paramsQuery,
-    runQuery,
-    reference
+    reference,
+    runQuery
 };
