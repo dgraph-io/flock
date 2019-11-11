@@ -28,36 +28,45 @@ const dgraphClient = new dgraph.DgraphClient(dgraphClientStub);
 async function setSchema() {
   const schema = `
     type Tweet {
-        id_str: string
-        created_at: dateTime
-        message: string
-        urls: [string]
-        hashtags: [string]
-        author: [User]
-        mention: [User]
-        retweet: bool
+      id_str: string
+      created_at: dateTime
+      message: string
+      urls: [string]
+      hashtags: [string]
+      author: User
+      mention: [User]
+      retweet: bool
     }
 
     type User {
-        user_id: string
-        user_name: string
-        screen_name: string
-        description: string
-        friends_count: int
-        verified: bool
-        profile_banner_url: string
-        profile_image_url: string
+      user_id: string
+      user_name: string
+      screen_name: string
+      description: string
+      friends_count: int
+      followers_count: int
+      verified: bool
+      profile_banner_url: string
+      profile_image_url: string
     }
 
-    user_id: string @index(exact) .
+    user_id: string @index(exact) @upsert .
     user_name: string @index(hash) .
     screen_name: string @index(term) .
-    id_str: string @index(exact) .
+    description: string .
+    friends_count: int .
+    followers_count: int .
+    verified: bool .
+    profile_banner_url: string .
+    profile_image_url: string .
+    id_str: string @index(exact) @upsert .
     created_at: dateTime @index(hour) .
-    urls: [string] @index(term) .
+    message: string .
+    urls: [string] .
     hashtags: [string] @index(exact) .
-    mention: [uid] @count @reverse .
-    author: [uid] @count @reverse .
+    author: uid @count @reverse .
+    mention: [uid] @reverse .
+    retweet: bool .
   `;
   const op = new dgraph.Operation();
   op.setSchema(schema)

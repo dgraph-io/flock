@@ -50,7 +50,7 @@ const (
 			message: string
 			urls: [string]
 			hashtags: [string]
-			author: [User]
+			author: User
 			mention: [User]
 			retweet: bool
 		}
@@ -70,11 +70,20 @@ const (
 		user_id: string @index(exact) @upsert .
 		user_name: string @index(hash) .
 		screen_name: string @index(term) .
+		description: string .
+		friends_count: int .
+		followers_count: int .
+		verified: bool .
+		profile_banner_url: string .
+		profile_image_url: string .
 		id_str: string @index(exact) @upsert .
 		created_at: dateTime @index(hour) .
+		message: string .
+		urls: [string] .
 		hashtags: [string] @index(exact) .
 		author: uid @count @reverse .
 		mention: [uid] @reverse .
+		retweet: bool .
 	`
 )
 

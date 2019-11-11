@@ -66,7 +66,7 @@ class Query {
             data = await queryData(this.query2);
         } else {
             variable = this.params[fetcher.getRandomInt(this.params.length)];
-            if (this.reference === "hashtags") {
+            if (variable != undefined && this.reference === "hashtags") {
                 variable = variable[fetcher.getRandomInt(variable.length)];
             }
             data = await queryData(this.query2, { "$var": variable });

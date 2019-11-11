@@ -1,6 +1,6 @@
 version: "3.5"
 services:
-  flock:
+  flock_client:
     build: ./
     container_name: flock_client
     restart: always
