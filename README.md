@@ -3,9 +3,9 @@
 Flock loads real Twitter streams into Dgraph to make use of graph travesals.
 
 Flock has two parts, 
-- [*Tweet loader*](./main.go) - Connects to [realtime Tweets][tweetsapi] via the Twitter Developer API and
+- *Tweet loader* - Connects to [realtime Tweets][tweetsapi] via the Twitter Developer API and
 loads a graph model of Twitter into Dgraph via mutations.
-- [*Query client*](./client/main.go) - Runs interesting graph queries on the Tweets data stored in Dgraph.
+- *Query client* - Runs interesting graph queries on the Tweets data stored in Dgraph.
 
 Here is the graph schema of Flock:
 
@@ -53,12 +53,10 @@ $ export DATA_DIR=$(pwd)/data
 - If you're running Linux, you can add the current user to the `docker` group to use Docker as a non-root user.
   `newgrp` creates a new terminal session. It is necessary after the user modification to see the effects.
 
-```
+```sh
 $ sudo usermod -aG docker $USER
 $ newgrp docker
 ```
-
-- Ensure that `credentials.json` with the Twitter credentials exist in the root directory of Flock.
 
 - Start the Dgraph servers and Ratel with Docker Compose. Visit http://localhost:8000 on your 
   browser to view the UI.
@@ -67,26 +65,13 @@ $ newgrp docker
 $ docker-compose up
 ```
 
-- On another terminal, start Flock:
+## Running Flock
 
-```sh
-$ docker-compose -f docker-compose-flock.yml up
-```
+Currently, we have Flock implemention for Go and JavaScript.
 
-Flock will begin printing out periodic log messages mentioning its
-loading rate. You're good to go if you see the `commit_rate` higher
-than 0/sec, which means data has been successfully committed to
-Dgraph.
+Go to the specific Flock documentation for instructions:
 
-A few minutes of running Flock is sufficient to get enough data for
-some interesting queries. To stop running Flock, press Ctrl+C on the
-terminal running Flock.
-
-```sh
-$ docker-compose -f docker-compose-flock.yml up
-...
-<Ctrl+C>
-Killing flock ... done
-```
+- [Go](./go)
+- [JavaScript](./js)
 
 ---

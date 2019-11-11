@@ -1,0 +1,12 @@
+version: "3.5"
+services:
+  flock_client:
+    build: .
+    container_name: flock_client
+    labels:
+      cluster: flock-cluster
+    restart: always
+    environment:
+      - ALPHA_ADDR=localhost:9080
+      - LOG_INTERVAL_TIME=2000
+    network_mode: "host"    

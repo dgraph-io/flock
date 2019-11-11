@@ -1,0 +1,10 @@
+version: "3.5"
+services:
+  flock_client:
+    build: ./
+    container_name: flock_client
+    restart: always
+    network_mode: "host"
+    labels:
+      cluster: flock-cluster
+    command: ["-a", "localhost:9080"]

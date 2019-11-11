@@ -45,14 +45,14 @@ const (
 
 	cDgraphSchema = `
 		type Tweet {
-			id_str
-			created_at
-			message
-			urls
-			hashtags
-			author
-			mention
-			retweet
+			id_str: string
+			created_at: dateTime
+			message: string
+			urls: [string]
+			hashtags: [string]
+			author: User
+			mention: [User]
+			retweet: bool
 		}
 		
 		type User {
