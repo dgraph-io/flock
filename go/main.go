@@ -56,15 +56,15 @@ const (
 		}
 		
 		type User {
-			user_id
-			user_name
-			screen_name
-			description
-			friends_count
-			followers_count
-			verified
-			profile_banner_url
-			profile_image_url
+			user_id: string
+			user_name: string
+			screen_name: string
+			description: string
+			friends_count: int
+			followers_count: int
+			verified: boolean
+			profile_banner_url: string
+			profile_image_url: string
 		}
 
 		user_id: string @index(exact) @upsert .
