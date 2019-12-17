@@ -1,14 +1,17 @@
+const fs = require('fs');
 const dgraph = require('dgraph-js');
 const grpc = require('grpc');
+const readline = require('readline');
 const twitter = require('twitter');
 
 // Twitter credentials
 const creds = require('./credentials.json');
 
 // Global constants
-const ALPHA_ADDR = process.env.ALPHA_ADDR || "localhost:9080"
+const ALPHA_ADDR = process.env.ALPHA_ADDR || "localhost:9080";
 const LOG_INTERVAL_TIME = process.env.LOG_INTERVAL_TIME || 2000;
 const LOG_INTERVAL_TIME_IN_SECONDS = LOG_INTERVAL_TIME/1000;
+const TWEETS_DATA_PATH = process.env.TWEETS_DATA_PATH;
 const startStatus = Date.now();
 
 // Global Variables
@@ -75,19 +78,21 @@ async function setSchema() {
 
 // Upsert Tweet JSON data into Dgraph
 async function upsertData(jsonObj, query) {
+  // create a new transaction
+  const txn = dgraphClient.newTxn();
   try {
     // create a mutation of the JSON object
     const mu = new dgraph.Mutation();
     mu.setSetJson(jsonObj);
 
-    // creating a request for the upsertion
+    // create a request for the upsertion
     const req = new dgraph.Request();
     req.setMutationsList([mu]);
     req.setQuery(query);
     req.setCommitNow(true);
 
-    // performing the upsertion with doRequest
-    await dgraphClient.newTxn().doRequest(req);
+    // perform the upsert with doRequest
+    await txn.doRequest(req);
   } catch (err) {
     const errMsg = err.message;
     if (errMsg.includes('connection refused')) {
@@ -98,7 +103,7 @@ async function upsertData(jsonObj, query) {
       // failed to upsert; transaction already commited or discarded
       failures += 1;
     } else if (retry && errMsg.includes('Please retry')) {
-      // retry upsert once again after waiting for 100ms
+      // retry upsert once again after 100ms wait
       retries += 1;
       await wait(100);
       retry = false;
@@ -108,18 +113,20 @@ async function upsertData(jsonObj, query) {
       errors += 1;
       console.log(`ERROR Unable to commit.\n${err}\n`);
     }
+  } finally {
+    await txn.discard();
   }
 }
 
-// Filtering the Tweet
+// Filter the Tweet
 async function filterTweet(tweet) {
-  // creating constants for filtered tweet object
+  // create constants for filtered tweet object
   const hashtags = [];
   const userMentions = [];
   const usersObject = [];
-  // assigning `uid(u)` for the author id
+  // assign `uid(u)` for the author id
   usersObject[tweet.user.id_str] = 'uid(u)';
-  // assigning `uid(mK)` for the mentioned user ids
+  // assign `uid(mK)` for the mentioned user ids
   // or `uid(u)` if the author himself is mentioned
   tweet.entities.user_mentions.forEach((element, index) => {
     let uid;
@@ -170,9 +177,9 @@ async function filterTweet(tweet) {
   return tweetObj;
 }
 
-// Building the query to be used for upsert
+// Build the query to be used for upsert
 async function buildQuery(tweet) {
-  // creating constants for building upsert query
+  // create constants for building upsert query
   const usersObject = [];
   const query = [
     `t as var(func: eq(id_str, "${tweet.id_str}"))`,
@@ -180,7 +187,7 @@ async function buildQuery(tweet) {
   ];
   // assign `u` for the author id
   usersObject[tweet.author.user_id] = 'u';
-  // assigning `mK` for the mentioned user ids
+  // assign `mK` for the mentioned user ids
   tweet.mention.forEach((element, index) => {
     let name;
     if (usersObject[element.user_id] != undefined) {
@@ -193,6 +200,16 @@ async function buildQuery(tweet) {
   });
 
   return `query {${query.join('\n')}}`;;
+}
+
+// Add Tweet data to Dgraph
+async function addTweetData(tweet) {
+  totalTweets += 1;
+  const tweetObj = await filterTweet(tweet);
+  const queries = await buildQuery(tweetObj);
+  retry = true;
+  await upsertData(tweetObj, queries);
+  commits += 1;
 }
 
 // Report Stats of the tweet loader
@@ -210,27 +227,44 @@ async function wait(time) {
 }
 
 async function main() {
-  // create twitter client
-  const client = new twitter(creds);
   // set Dgraph schema
   await setSchema();
   // report stats in specific intervals
   setInterval(reportStats, LOG_INTERVAL_TIME);
+  console.log(TWEETS_DATA_PATH);
+  if (TWEETS_DATA_PATH === undefined) {
+    // create twitter client
+    const client = new twitter(creds);
+    // fetch tweets from the twitter stream
+    client.stream('statuses/sample.json', function(stream) {
+      stream.on('data', async function(tweet) {
+        await addTweetData(tweet);
+      });
+      stream.on('error', function(error) {
+        errors += 1;
+        console.log(error);
+      });
+    });
+  } else {
+    const fileStream = fs.createReadStream(TWEETS_DATA_PATH);
+    const rl = readline.createInterface({
+      input: fileStream,
+      crlfDelay: Infinity
+    });
+    // Note: we use the crlfDelay option to recognize all instances of CR LF
+    // ('\r\n') in input.txt as a single line break.
 
-  // fetch tweets from the twitter stream
-  client.stream('statuses/sample.json', function(stream) {
-    stream.on('data', async function(tweet) {
-      totalTweets += 1;
-      const tweetObj = await filterTweet(tweet);
-      const queries = await buildQuery(tweetObj);
-      retry = true;
-      await upsertData(tweetObj, queries);
-      commits += 1;
-    });
-    stream.on('error', function(error) {
-      console.log(error);
-    });
-  });
+    for await (const tweet of rl) {
+      try {
+        // Each line in input.txt will be successively available here as `tweet`.
+        await addTweetData(JSON.parse(tweet));
+      } catch (error) {
+        // Ignore when parsing error occurs
+        errors += 1;
+        console.log(error);
+      }
+    }
+  }
 }
 
 main().then(() => {
