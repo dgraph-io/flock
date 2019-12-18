@@ -22,6 +22,9 @@ let commits = 0;
 let oldCommits = 0;
 let retries = 0;
 let errors = 0;
+let connectionFailed = false;
+let reportStatsIntervalId = 0;
+let errMsg, prevErrMsg;
 
 // Set Dgraph client and Dgraph client stub
 const dgraphClientStub = new dgraph.DgraphClientStub(ALPHA_ADDR, grpc.credentials.createInsecure());
@@ -93,8 +96,16 @@ async function upsertData(jsonObj, query) {
 
     // perform the upsert with doRequest
     await txn.doRequest(req);
+
+    // succesfully committed to Dgraph
+    commits += 1;
+    // in case resuming from connection failure, we restart report stats
+    if (connectionFailed === true) {
+      connectionFailed = false;
+      reportStatsIntervalId = setInterval(reportStats, LOG_INTERVAL_TIME);
+    }
   } catch (err) {
-    const errMsg = err.message;
+    errMsg = err.message;
     if (errMsg.includes('connection refused')) {
       // wait for alpha to restart
       console.log('ERROR Connection refused... waiting a bit');
@@ -103,15 +114,31 @@ async function upsertData(jsonObj, query) {
       // failed to upsert; transaction already commited or discarded
       failures += 1;
     } else if (retry && errMsg.includes('Please retry')) {
-      // retry upsert once again after 100ms wait
+      // retry upsert once again after 200ms wait
       retries += 1;
-      await wait(100);
+      await wait(200);
       retry = false;
       await upsertData(jsonObj, query);
+    } else if (errMsg.includes("failed to connect to all addresses")) {
+      // we only print log for connection failure the first time
+      if (!connectionFailed) {
+        clearInterval(reportStatsIntervalId);
+        connectionFailed = true;
+        console.log(`Error: Failed to connect to all addresses.\nIs Dgraph running at address ${ALPHA_ADDR}?`);
+      }
+      // retry upsert once again after 500ms wait
+      await wait(500);
+      await upsertData(jsonObj, query);
+    } else if (errMsg.includes("Stream removed")) {
+      console.log(`Error: Stream removed.\nIs Dgraph running at address ${ALPHA_ADDR}? Please try again.`);
+      process.exit(1);
     } else {
       // unable to upsert
       errors += 1;
-      console.log(`ERROR Unable to commit.\n${err}\n`);
+      if (errMsg !== prevErrMsg) {
+        console.log(`ERROR Unable to commit.\n${errMsg}\n`);
+        prevErrMsg = errMsg;
+      }
     }
   } finally {
     await txn.discard();
@@ -209,13 +236,12 @@ async function addTweetData(tweet) {
   const queries = await buildQuery(tweetObj);
   retry = true;
   await upsertData(tweetObj, queries);
-  commits += 1;
 }
 
 // Report Stats of the tweet loader
 function reportStats() {
   const now = Date.now();
-  console.log(`STATS Tweets: ${totalTweets}, Failues: ${failures}, Retries: ${retries}, \
+  console.log(`STATS Tweets: ${totalTweets}, Failures: ${failures}, Retries: ${retries}, \
 Errors: ${errors}, Commit Rate: ${Math.round((commits-oldCommits)/LOG_INTERVAL_TIME_IN_SECONDS)}, \
 Uptime: ${Math.round((now - startStatus)/1000)}s`);
   oldCommits = commits;
@@ -230,8 +256,7 @@ async function main() {
   // set Dgraph schema
   await setSchema();
   // report stats in specific intervals
-  setInterval(reportStats, LOG_INTERVAL_TIME);
-  console.log(TWEETS_DATA_PATH);
+  reportStatsIntervalId = setInterval(reportStats, LOG_INTERVAL_TIME);
   if (TWEETS_DATA_PATH === undefined) {
     // create twitter client
     const client = new twitter(creds);
@@ -240,9 +265,9 @@ async function main() {
       stream.on('data', async function(tweet) {
         await addTweetData(tweet);
       });
-      stream.on('error', function(error) {
+      stream.on('error', function(err) {
         errors += 1;
-        console.log(error);
+        console.log(err.message);
       });
     });
   } else {
@@ -254,16 +279,22 @@ async function main() {
     // Note: we use the crlfDelay option to recognize all instances of CR LF
     // ('\r\n') in input.txt as a single line break.
 
-    for await (const tweet of rl) {
+    rl.on('line', async function(tweet) {
       try {
         // Each line in input.txt will be successively available here as `tweet`.
         await addTweetData(JSON.parse(tweet));
-      } catch (error) {
-        // Ignore when parsing error occurs
+      } catch (err) {
+        // Pass when parsing error occurs
         errors += 1;
-        console.log(error);
+        console.log(err.message);
       }
-    }
+
+      // adding delay to avoid JS heap OOM
+      await wait(500);
+    })
+    .on('close', function(line) {
+      clearInterval(reportStatsIntervalId);
+    });
   }
 }
 
