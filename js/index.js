@@ -100,7 +100,7 @@ async function upsertData(jsonObj, query) {
     // succesfully committed to Dgraph
     commits += 1;
     // in case resuming from connection failure, we restart report stats
-    if (connectionFailed === true) {
+    if (connectionFailed) {
       connectionFailed = false;
       reportStatsIntervalId = setInterval(reportStats, LOG_INTERVAL_TIME);
     }
@@ -114,7 +114,7 @@ async function upsertData(jsonObj, query) {
       // failed to upsert; transaction already commited or discarded
       failures += 1;
     } else if (retry && errMsg.includes('Please retry')) {
-      // retry upsert once again after 200ms wait
+      // wait and retry upsert for only one more time
       retries += 1;
       await wait(200);
       retry = false;
@@ -126,7 +126,7 @@ async function upsertData(jsonObj, query) {
         connectionFailed = true;
         console.log(`Error: Failed to connect to all addresses.\nIs Dgraph running at address ${ALPHA_ADDR}?`);
       }
-      // retry upsert once again after 500ms wait
+      // wait for a while and retry
       await wait(500);
       await upsertData(jsonObj, query);
     } else if (errMsg.includes("Stream removed")) {
@@ -285,14 +285,19 @@ async function main() {
         await addTweetData(JSON.parse(tweet));
       } catch (err) {
         // Pass when parsing error occurs
+        errMsg = err.message;
         errors += 1;
-        console.log(err.message);
+        if (errMsg !== prevErrMsg) {
+          console.log(`Parse Error: \n${errMsg}\n`);
+          prevErrMsg = errMsg;
+        }
       }
-
       // adding delay to avoid JS heap OOM
       await wait(500);
     })
-    .on('close', function(line) {
+    .on('close', function() {
+      // report stats for the final time and stop
+      reportStats();
       clearInterval(reportStatsIntervalId);
     });
   }
