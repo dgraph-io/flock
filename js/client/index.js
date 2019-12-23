@@ -12,6 +12,7 @@ const startStatus = Date.now();
 let successes = 0;
 let failures = 0;
 let oldSuccesses = 0;
+let errMsg, prevErrMsg;
 
 // Set Dgraph client and Dgraph client stub
 const dgraphClientStub = new dgraph.DgraphClientStub(ALPHA_ADDR, grpc.credentials.createInsecure());
@@ -98,8 +99,23 @@ for (let i=1; i<10; i++) {
 async function queryData(query, vars) {
     // create a transaction
     const txn = dgraphClient.newTxn({ readOnly: true });
-    // quering dgraph with vars and returning the response JSON
-    return (await txn.queryWithVars(query, vars)).getJson();
+    try {
+        // quering dgraph with vars and returning the response JSON
+        return (await txn.queryWithVars(query, vars)).getJson();
+    } catch (err) {
+        failures += 1;
+        errMsg = err.message;
+        if (errMsg.includes("Stream removed")) {
+            console.log(`Error: Stream removed.\nIs Dgraph running at address ${ALPHA_ADDR}? Please try again.`);
+            process.exit(1);
+        } else {
+            // unable to query
+            if (errMsg !== prevErrMsg) {
+                console.log(`ERROR Unable to query.\n${errMsg}\n`);
+                prevErrMsg = errMsg;
+            }
+        }
+    }
 }
 
 // Report Stats of the tweet loader
@@ -130,7 +146,7 @@ async function main() {
         runQueries(queryArray[fetcher.getRandomInt(queryArray.length)]);
 
         // adding delay to avoid JS heap OOM due to the infinite loop
-        await wait(100);
+        await wait(200);
     };
 }
   
