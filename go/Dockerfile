@@ -6,6 +6,8 @@ ENV GO111MODULE on
 
 WORKDIR /app
 
+## Fail if this file doesn't exist (prevent creating directory)
+COPY credentials.json .
 COPY . ./
 
 RUN  \
