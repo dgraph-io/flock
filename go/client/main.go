@@ -94,7 +94,7 @@ func (q *queryOne) getParams(dgr *dgo.Dgraph) error {
 	txn := dgr.NewReadOnlyTxn()
 	resp, err := txn.Query(context.Background(), query)
 	if err != nil {
-		log.Printf("error in quering dgraph :: %v", err)
+		log.Printf("error in querying dgraph %T :: %v", q, err)
 		return err
 	}
 
@@ -146,7 +146,7 @@ query all($tagVal: string) {
 	resp, err := txn.QueryWithVars(context.Background(), query,
 		map[string]string{"$tagVal": hashtag})
 	if err != nil {
-		log.Printf("error in quering dgraph :: %v", err)
+		log.Printf("error in querying dgraph %T :: %v", q, err)
 		return err
 	}
 
@@ -205,7 +205,7 @@ func (q *queryTwo) getParams(dgr *dgo.Dgraph) error {
 	txn := dgr.NewReadOnlyTxn()
 	resp, err := txn.Query(context.Background(), query)
 	if err != nil {
-		log.Printf("error in querying dgraph :: %v", err)
+		log.Printf("error in querying dgraph %T :: %v", q, err)
 		return err
 	}
 
@@ -258,7 +258,7 @@ query all($screenName: string) {
 	resp, err := txn.QueryWithVars(context.Background(), query,
 		map[string]string{"$screenName": screenName})
 	if err != nil {
-		log.Printf("error in querying dgraph :: %v", err)
+		log.Printf("error in querying dgraph %T :: %v", q, err)
 		return err
 	}
 
@@ -325,7 +325,7 @@ func (q *queryThree) runQuery(dgr *dgo.Dgraph) error {
 	txn := dgr.NewReadOnlyTxn()
 	resp, err := txn.Query(context.Background(), query)
 	if err != nil {
-		log.Printf("error in querying dgraph :: %v", err)
+		log.Printf("error in querying dgraph %T :: %v", q, err)
 		return err
 	}
 
@@ -389,7 +389,7 @@ func (q *queryFour) runQuery(dgr *dgo.Dgraph) error {
 	txn := dgr.NewReadOnlyTxn()
 	resp, err := txn.Query(context.Background(), query)
 	if err != nil {
-		log.Printf("error in querying dgraph :: %v", err)
+		log.Printf("error in querying dgraph %T :: %v", q, err)
 		return err
 	}
 
@@ -438,7 +438,7 @@ func (q *queryFive) getParams(dgr *dgo.Dgraph) error {
 	txn := dgr.NewReadOnlyTxn()
 	resp, err := txn.Query(context.Background(), query)
 	if err != nil {
-		log.Printf("error in querying dgraph :: %v", err)
+		log.Printf("error in querying dgraph %T :: %v", q, err)
 		return err
 	}
 
@@ -491,7 +491,7 @@ query all($userID: string) {
 	resp, err := txn.QueryWithVars(context.Background(), query,
 		map[string]string{"$userID": userID})
 	if err != nil {
-		log.Printf("error in querying dgraph :: %v", err)
+		log.Printf("error in querying dgraph %T :: %v", q, err)
 		return err
 	}
 
@@ -545,7 +545,7 @@ func (q *querySix) getParams(dgr *dgo.Dgraph) error {
 	txn := dgr.NewReadOnlyTxn()
 	resp, err := txn.Query(context.Background(), query)
 	if err != nil {
-		log.Printf("error in quering dgraph :: %v", err)
+		log.Printf("error in querying dgraph %T :: %v", q, err)
 		return err
 	}
 
@@ -616,7 +616,7 @@ func (q *querySeven) getParams(dgr *dgo.Dgraph) error {
 	txn := dgr.NewReadOnlyTxn()
 	resp, err := txn.Query(context.Background(), query)
 	if err != nil {
-		log.Printf("error in querying dgraph :: %v", err)
+		log.Printf("error in querying dgraph %T :: %v", q, err)
 		return err
 	}
 
@@ -698,7 +698,7 @@ func (q *queryEight) runQuery(dgr *dgo.Dgraph) error {
 	txn := dgr.NewReadOnlyTxn()
 	resp, err := txn.Query(context.Background(), query)
 	if err != nil {
-		log.Printf("error in querying dgraph, query: %v :: %v", query, err)
+		log.Printf("error in querying dgraph %T :: %v", q, err)
 		return err
 	}
 
@@ -767,7 +767,7 @@ func (q *queryNine) getParams(dgr *dgo.Dgraph) error {
 	txn := dgr.NewReadOnlyTxn()
 	resp, err := txn.Query(context.Background(), query)
 	if err != nil {
-		log.Printf("error in querying dgraph :: %v", err)
+		log.Printf("error in querying dgraph %T :: %v", q, err)
 		return err
 	}
 
@@ -875,7 +875,7 @@ func runQuery(alphas []api.DgraphClient, wg *sync.WaitGroup,
 
 		if err != nil {
 			atomic.AddUint32(&stats.Failures, 1)
-			log.Printf("error in running parameter query :: %v", err)
+			log.Printf("error in running parameter query %T :: %v", query, err)
 			continue
 		}
 
