@@ -914,10 +914,18 @@ func reportStats() {
 }
 
 func newAPIClients(sockAddr []string) ([]api.DgraphClient, error) {
+	const GrpcMaxSize = 10 << 20 // 10 MB
+
 	var clients []api.DgraphClient
 
 	for _, sa := range sockAddr {
-		conn, err := grpc.Dial(sa, grpc.WithInsecure())
+		callOpts := append([]grpc.CallOption{},
+			grpc.MaxCallRecvMsgSize(GrpcMaxSize),
+			grpc.MaxCallSendMsgSize(GrpcMaxSize))
+		dialOpts := append([]grpc.DialOption{},
+			grpc.WithDefaultCallOptions(callOpts...),
+			grpc.WithInsecure())
+		conn, err := grpc.Dial(sa, dialOpts...)
 		if err != nil {
 			return nil, err
 		}
