@@ -94,7 +94,7 @@ func (q *queryOne) getParams(dgr *dgo.Dgraph) error {
 	txn := dgr.NewReadOnlyTxn()
 	resp, err := txn.Query(context.Background(), query)
 	if err != nil {
-		log.Printf("error in quering dgraph :: %v", err)
+		log.Printf("error in querying dgraph :: %v", err)
 		return err
 	}
 
