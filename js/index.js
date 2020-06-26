@@ -34,26 +34,26 @@ const dgraphClient = new dgraph.DgraphClient(dgraphClientStub);
 async function setSchema() {
   const schema = `
     type Tweet {
-      id_str: string
-      created_at: dateTime
-      message: string
-      urls: [string]
-      hashtags: [string]
-      author: User
-      mention: [User]
-      retweet: bool
+      id_str
+      created_at
+      message
+      urls
+      hashtags
+      author
+      mention
+      retweet
     }
 
     type User {
-      user_id: string
-      user_name: string
-      screen_name: string
-      description: string
-      friends_count: int
-      followers_count: int
-      verified: bool
-      profile_banner_url: string
-      profile_image_url: string
+      user_id
+      user_name
+      screen_name
+      description
+      friends_count
+      followers_count
+      verified
+      profile_banner_url
+      profile_image_url
     }
 
     user_id: string @index(exact) @upsert .
