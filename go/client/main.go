@@ -889,7 +889,6 @@ func runQuery(alphas []api.DgraphClient, wg *sync.WaitGroup,
 
 			if err != nil {
 				atomic.AddUint32(&stats.Failures, 1)
-				log.Printf("error in running query :: %v", err)
 				continue
 			}
 
