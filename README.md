@@ -2,6 +2,8 @@
 
 Flock loads real Twitter streams into Dgraph to make use of graph travesals.
 
+**Use [Discuss Issues](https://discuss.dgraph.io/tags/c/issues/35/flock) for reporting issues about this repository.**
+
 Flock has two parts, 
 - *Tweet loader* - Connects to [realtime Tweets][tweetsapi] via the Twitter Developer API and
 loads a graph model of Twitter into Dgraph via mutations.
