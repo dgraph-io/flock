@@ -13,7 +13,7 @@ Here is the graph schema of Flock:
 
 ![Schema](./schema.JPG)
 
-[tweetsapi]: https://developer.twitter.com/en/docs/tweets/sample-realtime/overview/GET_statuse_sample
+[tweetsapi]: https://developer.twitter.com/en/docs/tweets/sample-realtime/overview/GET_statuses_sample
 
 # Running Flock
 
