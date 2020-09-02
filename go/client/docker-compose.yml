@@ -8,3 +8,7 @@ services:
     labels:
       cluster: flock-cluster
     command: ["-a", "localhost:9080"]
+    logging:
+      options:
+        max-size: "100m"
+        max-file: "10"
