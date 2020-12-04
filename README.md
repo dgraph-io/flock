@@ -1,6 +1,6 @@
 # Flock 
 
-Flock loads real Twitter streams into Dgraph to make use of graph travesals.
+Flock loads real Twitter streams into Dgraph to make use of graph traversals.
 
 **Use [Discuss Issues](https://discuss.dgraph.io/tags/c/issues/35/flock) for reporting issues about this repository.**
 
@@ -33,7 +33,7 @@ their APIs. Let's start with how to create a Twitter developer account.
   ```sh
   cp credentials-template.json credentials.json
   ```
-- Open the `crendentials.json` file and replace the placeholders with the keys from the 
+- Open the `credentials.json` file and replace the placeholders with the keys from the 
   Twitter app's `Keys and token` tab.
 
 ---
@@ -69,7 +69,7 @@ $ docker-compose up
 
 ## Running Flock
 
-Currently, we have Flock implemention for Go and JavaScript.
+Currently, we have Flock implementation for Go and JavaScript.
 
 Go to the specific Flock documentation for instructions:
 
