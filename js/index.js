@@ -97,7 +97,7 @@ async function upsertData(jsonObj, query) {
     // perform the upsert with doRequest
     await txn.doRequest(req);
 
-    // succesfully committed to Dgraph
+    // successfully committed to Dgraph
     commits += 1;
     // in case resuming from connection failure, we restart report stats
     if (connectionFailed) {
