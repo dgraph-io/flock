@@ -592,8 +592,8 @@ func main() {
 }
 
 var (
-	gzFileSuffix   = "tweets.gz"
-	jsonFileSuffix = "tweets.json"
+	gzFileSuffix   = ".tweets.gz"
+	jsonFileSuffix = ".tweets.json"
 )
 
 func parseFid(name string) uint64 {
