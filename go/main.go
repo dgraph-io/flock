@@ -559,7 +559,7 @@ func main() {
 	flag.StringVar(&opts.dataFilesPath, "d", "", "path containing json files with tweets in each line")
 	flag.StringVar(&opts.outFilesPath, "o", "./data", "Directory to store compressed json tweets")
 	flag.Float64Var(&opts.noCommitRatio, "p", 0, "prob of CommitNow=False, from 0.0 to 1.0")
-	flag.IntVar(&opts.fileSize, "fsz", 512, "Max size of the generated gz file (in MB)")
+	flag.IntVar(&opts.fileSize, "fsz", 100, "Max size of the generated gz file (in MB)")
 
 	alphasAddress := flag.String("a", ":9180,:9182,:9183", "comma separated addresses to alphas")
 	downloadTweets := flag.Bool("download", false, "Download tweets and save to directory specified by -o flag")
