@@ -19,6 +19,6 @@
   "license": "ISC",
   "dependencies": {
     "dgraph-js": "^2.0.2",
-    "grpc": "^1.24.0"
+    "grpc": "^1.24.9"
   }
 }
